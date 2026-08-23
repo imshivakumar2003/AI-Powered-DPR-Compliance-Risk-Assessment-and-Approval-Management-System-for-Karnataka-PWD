@@ -9,17 +9,19 @@ import { useUser } from "@/lib/UserContext";
 export function AppLayoutWrapper({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const isHomePage = pathname === "/";
   const isAuthPage = pathname?.startsWith("/auth");
+  const isPublicPage = isHomePage || isAuthPage;
   const { isLoaded, isLoggedIn } = useUser();
 
   useEffect(() => {
-    if (isLoaded && !isAuthPage && !isLoggedIn) {
+    if (isLoaded && !isPublicPage && !isLoggedIn) {
       router.replace("/auth/login");
     }
-  }, [isLoaded, isAuthPage, isLoggedIn, router]);
+  }, [isLoaded, isPublicPage, isLoggedIn, router]);
 
-  // Auth pages render immediately
-  if (isAuthPage) {
+  // Public pages (Home Page and Auth) render immediately without Sidebar
+  if (isPublicPage) {
     return <div style={{ minHeight: "100vh", width: "100%" }}>{children}</div>;
   }
 

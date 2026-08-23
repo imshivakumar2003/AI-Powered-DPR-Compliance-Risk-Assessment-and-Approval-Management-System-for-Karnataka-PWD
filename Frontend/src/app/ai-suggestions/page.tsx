@@ -7,6 +7,8 @@ import { Topbar } from '@/components/layout/Topbar';
 import { Folder, FolderOpen, Clock, CheckCircle, XCircle, RefreshCw, Upload } from 'lucide-react';
 import Link from 'next/link';
 
+import { getUserHeaders } from '@/lib/api';
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 interface ApiProject {
@@ -34,6 +36,7 @@ function statusColor(status: string) {
   const s = status?.toUpperCase();
   if (s === 'APPROVED') return 'var(--accent-green)';
   if (s === 'REJECTED') return '#ef4444';
+  if (s === 'PENDING') return 'var(--accent-amber)';
   return 'var(--accent-amber)';
 }
 
@@ -62,7 +65,7 @@ export default function AiSuggestionsPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API_BASE}/api/projects`);
+      const res = await fetch(`${API_BASE}/api/projects`, { headers: getUserHeaders() });
       if (!res.ok) throw new Error(`Server error ${res.status}`);
       const data: ApiProject[] = await res.json();
       setProjects(data);

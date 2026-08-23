@@ -43,9 +43,12 @@ def _ensure_initial_timeline(project):
 
 
 @app.get("/api/application-status")
-def get_all_application_statuses():
+def get_all_application_statuses(request: Request, username: Optional[str] = None, role: Optional[str] = None):
     """Return list of all DPRs with application-status summary."""
-    projects = get_all_projects()
+    from main import _extract_request_user
+    from app.services.project_service import can_user_access_project, get_all_projects
+    u, r, uid = _extract_request_user(request, username, role)
+    projects = get_all_projects(username=u, role=r, user_id=uid)
     result = []
     for p in projects:
         ensure_upload_timeline(p.id)
@@ -81,11 +84,17 @@ def get_all_application_statuses():
 
 
 @app.get("/api/application-status/{project_id}")
-def get_application_status_detail(project_id: str):
+def get_application_status_detail(project_id: str, request: Request, username: Optional[str] = None, role: Optional[str] = None):
     """Return full detail for one DPR including comments, timeline, versions, notifications."""
+    from main import _extract_request_user
+    from app.services.project_service import can_user_access_project, get_project_by_id
+    u, r, uid = _extract_request_user(request, username, role)
     p = get_project_by_id(project_id)
     if not p:
         raise HTTPException(404, "Project not found")
+
+    if u and not can_user_access_project(p, u, r):
+        raise HTTPException(403, "Access Denied: You do not have permission to view or access this DPR.")
 
     ensure_upload_timeline(project_id)
 
@@ -133,17 +142,20 @@ def get_application_status_detail(project_id: str):
 
 
 @app.post("/api/application-status/{project_id}/comment")
-def post_comment(project_id: str, req: CommentRequest):
+def post_comment(project_id: str, req: CommentRequest, request: Request):
     """Post a comment from user or reviewer."""
     p = get_project_by_id(project_id)
     if not p:
         raise HTTPException(404, "Project not found")
+
+    user_id = request.headers.get("X-User-Id", "")
 
     comment = add_comment(
         project_id=project_id,
         author_role=req.author_role,
         author_name=req.author_name,
         message=req.message,
+        author_id=user_id,
     )
 
     # Add timeline event
@@ -279,16 +291,19 @@ def get_project_timeline(project_id: str):
 
 
 @app.get("/api/application-status/{project_id}/comments")
-def get_project_comments(project_id: str):
-    p = get_project_by_id(project_id)
+def get_project_comments(project_id: str, request: Request, username: Optional[str] = None, role: Optional[str] = None):
+    from main import _extract_request_user
+    u, r, uid = _extract_request_user(request, username, role)
+    p = get_project_by_id(project_id, username=u, role=r, user_id=uid)
     if not p:
-        raise HTTPException(404, "Project not found")
+        raise HTTPException(404, "Project not found or access denied")
     return get_comments(project_id)
 
 
 @app.post("/api/application-status/{project_id}/comment-with-file")
 async def post_comment_with_file(
     project_id: str,
+    request: Request,
     author_role: str = Form(...),
     author_name: str = Form(...),
     message: str = Form(...),
@@ -299,6 +314,8 @@ async def post_comment_with_file(
     p = get_project_by_id(project_id)
     if not p:
         raise HTTPException(404, "Project not found")
+
+    user_id = request.headers.get("X-User-Id", "")
 
     att_filename = None
     att_path = None
@@ -314,7 +331,7 @@ async def post_comment_with_file(
         att_path = saved
 
     comment = add_comment(project_id, author_role, author_name, message,
-                          att_filename, att_path)
+                          att_filename, att_path, author_id=user_id)
 
     if author_role == "reviewer":
         add_timeline_event(project_id, "reviewer_comment", "Reviewer Added Comment",

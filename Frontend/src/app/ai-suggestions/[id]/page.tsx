@@ -91,13 +91,32 @@ function formatDate(iso: string) {
   } catch { return iso; }
 }
 
+import { useUser } from '@/lib/UserContext';
+import { getUserHeaders } from '@/lib/api';
+import { MessageSquare, Upload, Shield } from 'lucide-react';
+
+interface CommentItem {
+  id: string;
+  author_role: string;
+  author_name: string;
+  message: string;
+  attachment_filename?: string | null;
+  created_at: string;
+}
+
 export default function AiSuggestionDetailPage() {
   const { id } = useParams();
   const dprId = id as string;
   const router = useRouter();
+  const { user } = useUser();
 
   const [analysis, setAnalysis] = useState<CategoryAnalysis | null>(null);
   const [project, setProject] = useState<ProjectInfo | null>(null);
+  const [comments, setComments] = useState<CommentItem[]>([]);
+  const [replyMsg, setReplyMsg] = useState('');
+  const [replyFile, setReplyFile] = useState<File | null>(null);
+  const [sendingReply, setSendingReply] = useState(false);
+
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -105,20 +124,34 @@ export default function AiSuggestionDetailPage() {
   const [sendError, setSendError] = useState('');
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
 
+  const loadComments = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/application-status/${dprId}/comments`, { headers: getUserHeaders() });
+      if (res.ok) {
+        const cData = await res.json();
+        setComments(cData);
+      }
+    } catch (e) {
+      console.error('Failed to load comments:', e);
+    }
+  };
+
   useEffect(() => {
     async function load() {
       setLoading(true);
       setError('');
       try {
-        const [infoRes, catRes] = await Promise.all([
-          fetch(`${API_BASE}/api/dpr/${dprId}/info`).then(r => r.ok ? r.json() : null),
-          fetch(`${API_BASE}/api/dpr/${dprId}/category-analysis`).then(r => {
+        const [infoRes, catRes, commRes] = await Promise.all([
+          fetch(`${API_BASE}/api/dpr/${dprId}/info`, { headers: getUserHeaders() }).then(r => r.ok ? r.json() : null),
+          fetch(`${API_BASE}/api/dpr/${dprId}/category-analysis`, { headers: getUserHeaders() }).then(r => {
             if (!r.ok) throw new Error(`Analysis failed (${r.status})`);
             return r.json();
           }),
+          fetch(`${API_BASE}/api/application-status/${dprId}/comments`, { headers: getUserHeaders() }).then(r => r.ok ? r.json() : []),
         ]);
         setProject(infoRes);
         setAnalysis(catRes);
+        setComments(commRes);
         setSent(catRes?.in_approvals ?? false);
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : 'Failed to load analysis');
@@ -128,6 +161,34 @@ export default function AiSuggestionDetailPage() {
     }
     load();
   }, [dprId]);
+
+  const handleSendComment = async () => {
+    if (!replyMsg.trim()) return;
+    setSendingReply(true);
+    try {
+      const form = new FormData();
+      form.append('author_role', ['admin', 'state_reviewer', 'reviewer'].includes(user.role?.toLowerCase() || '') ? 'reviewer' : 'user');
+      form.append('author_name', user.displayName || user.username || 'User');
+      form.append('message', replyMsg.trim());
+      if (replyFile) form.append('file', replyFile);
+
+      const res = await fetch(`${API_BASE}/api/application-status/${dprId}/comment-with-file`, {
+        method: 'POST',
+        headers: getUserHeaders(),
+        body: form,
+      });
+
+      if (res.ok) {
+        setReplyMsg('');
+        setReplyFile(null);
+        await loadComments();
+      }
+    } catch (e) {
+      console.error('Error sending comment:', e);
+    } finally {
+      setSendingReply(false);
+    }
+  };
 
   const handleSendToApprovals = async () => {
     if (sent) {
@@ -455,6 +516,115 @@ export default function AiSuggestionDetailPage() {
                   View Full DPR Analysis
                 </Link>
               )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Synchronized Reviewer Conversation & Message Thread ── */}
+        <div className="card" style={{ marginTop: 24, overflow: 'hidden' }}>
+          <div style={{
+            padding: '16px 22px', borderBottom: '1px solid var(--border)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            background: 'rgba(0,0,0,0.1)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <MessageSquare size={18} color="#3b82f6" />
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'var(--font-display)' }}>
+                  DPR Application Conversation Thread
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                  Synchronized message thread between Submitter and Reviewers for DPR #{dprId.slice(0, 8)}
+                </div>
+              </div>
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: 'rgba(59,130,246,0.15)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.3)' }}>
+              {comments.length} Messages
+            </span>
+          </div>
+
+          {/* Messages list */}
+          <div style={{ padding: '20px 22px', minHeight: 180, maxHeight: 380, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {comments.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)', fontSize: 13 }}>
+                No messages yet. Send a message below to start a conversation with the Technical Reviewer.
+              </div>
+            ) : (
+              comments.map(c => {
+                const isReviewer = c.author_role.toLowerCase() === 'reviewer' || c.author_role.toLowerCase() === 'admin';
+                return (
+                  <div
+                    key={c.id}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: isReviewer ? 'flex-start' : 'flex-end',
+                    }}
+                  >
+                    <div style={{
+                      maxWidth: '75%',
+                      padding: '12px 16px',
+                      borderRadius: 14,
+                      background: isReviewer ? 'rgba(59,130,246,0.12)' : 'rgba(16,185,129,0.12)',
+                      border: `1px solid ${isReviewer ? 'rgba(59,130,246,0.25)' : 'rgba(16,185,129,0.25)'}`,
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
+                        <span style={{ fontSize: 11.5, fontWeight: 800, color: isReviewer ? '#60a5fa' : '#34d399' }}>
+                          {isReviewer ? '🧑‍💼 Reviewer' : '👤 Submitter'} ({c.author_name})
+                        </span>
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                          {new Date(c.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                        {c.message}
+                      </div>
+                      {c.attachment_filename && (
+                        <div style={{ marginTop: 8, fontSize: 11, color: '#3b82f6', display: 'flex', alignItems: 'center', gap: 4 }}>
+                          📎 Attachment: {c.attachment_filename}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Interactive Reply Input */}
+          <div style={{ padding: '16px 22px', borderTop: '1px solid var(--border)', background: 'rgba(0,0,0,0.15)' }}>
+            <textarea
+              value={replyMsg}
+              onChange={e => setReplyMsg(e.target.value)}
+              placeholder="Type your message or reply to the reviewer…"
+              rows={3}
+              style={{
+                width: '100%', padding: '12px 14px', background: 'var(--bg-secondary)',
+                border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)',
+                fontSize: 13, resize: 'vertical', outline: 'none', fontFamily: 'var(--font-body)',
+                boxSizing: 'border-box'
+              }}
+            />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 8, border: '1px dashed var(--border)', background: 'var(--bg-secondary)', cursor: 'pointer', fontSize: 11.5, color: 'var(--text-muted)' }}>
+                <Upload size={13} />
+                {replyFile ? replyFile.name.slice(0, 20) + '…' : 'Attach file'}
+                <input type="file" style={{ display: 'none' }} onChange={e => setReplyFile(e.target.files?.[0] || null)} />
+              </label>
+
+              <button
+                onClick={handleSendComment}
+                disabled={sendingReply || !replyMsg.trim()}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 7, padding: '9px 20px', borderRadius: 9,
+                  background: replyMsg.trim() ? 'linear-gradient(135deg, #3b82f6, #2563eb)' : 'var(--bg-secondary)',
+                  color: replyMsg.trim() ? 'white' : 'var(--text-muted)', border: 'none', fontSize: 13, fontWeight: 700,
+                  cursor: replyMsg.trim() ? 'pointer' : 'default', transition: 'all 0.15s'
+                }}
+              >
+                {sendingReply ? <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={14} />}
+                <span>Send Message</span>
+              </button>
             </div>
           </div>
         </div>

@@ -12,7 +12,7 @@ import {
 import Link from 'next/link';
 import {
   fetchDprQuality, fetchDprCompliance, fetchDprRisk, downloadDprReport,
-  ProjectCompliance, QualityAssessment
+  getUserHeaders, ProjectCompliance, QualityAssessment
 } from '@/lib/api';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -78,24 +78,40 @@ export default function DprDetailsPage() {
   const [risk, setRisk] = useState<RiskResult | null>(null);
   const [project, setProject] = useState<ApiProject | null>(null);
   const [loading, setLoading] = useState(true);
+  const [accessDenied, setAccessDenied] = useState(false);
 
   useEffect(() => {
+    if (!dprId) return;
+    if (['approvals', 'queue', 'upload'].includes(dprId.toLowerCase())) {
+      router.replace(dprId.toLowerCase() === 'approvals' ? '/approvals' : `/dpr/${dprId.toLowerCase()}`);
+      return;
+    }
     async function load() {
-      // Fetch real project metadata + AI assessment in parallel
-      const [infoRes, a, c, r] = await Promise.all([
-        fetch(`${API_BASE}/api/dpr/${dprId}/info`).then(res => res.ok ? res.json() : null).catch(() => null),
-        fetchDprQuality(dprId),
-        fetchDprCompliance(dprId),
-        fetchDprRisk(dprId),
-      ]);
-      setProject(infoRes);
-      setAssessment(a);
-      setCompliance(c);
-      setRisk(r as unknown as RiskResult);
-      setLoading(false);
+      try {
+        const infoResponse = await fetch(`${API_BASE}/api/dpr/${dprId}/info`, { headers: getUserHeaders() });
+        if (infoResponse.status === 403) {
+          setAccessDenied(true);
+          setLoading(false);
+          return;
+        }
+        const infoRes = infoResponse.ok ? await infoResponse.json() : null;
+        const [a, c, r] = await Promise.all([
+          fetchDprQuality(dprId),
+          fetchDprCompliance(dprId),
+          fetchDprRisk(dprId),
+        ]);
+        setProject(infoRes);
+        setAssessment(a);
+        setCompliance(c);
+        setRisk(r as unknown as RiskResult);
+      } catch (err) {
+        console.error('Error loading DPR detail:', err);
+      } finally {
+        setLoading(false);
+      }
     }
     load();
-  }, [dprId]);
+  }, [dprId, router]);
 
   if (loading) {
     return (
@@ -105,6 +121,28 @@ export default function DprDetailsPage() {
           <div style={{ textAlign: 'center' }}>
             <div className="spin" style={{ width: 40, height: 40, border: '3px solid var(--border)', borderTopColor: 'var(--accent-blue)', borderRadius: '50%', margin: '0 auto 16px' }} />
             <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Running AI assessment...</div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  if (accessDenied) {
+    return (
+      <>
+        <Topbar title="Access Restricted" subtitle="DPR Privacy Isolation" />
+        <div className="page-content fade-in" style={{ maxWidth: 500, margin: '60px auto', textAlign: 'center' }}>
+          <div className="card" style={{ padding: 40 }}>
+            <AlertCircle size={48} color="#ef4444" style={{ margin: '0 auto 16px' }} />
+            <h2 style={{ fontSize: 20, fontWeight: 900, color: 'var(--text-primary)', marginBottom: 8 }}>
+              Access Denied (HTTP 403)
+            </h2>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 24 }}>
+              You do not have permission to view or access this DPR. Users are only allowed to view their own uploaded Detailed Project Reports.
+            </p>
+            <button onClick={() => router.push('/user/dashboard')} className="topbar-btn primary" style={{ width: '100%', justifyContent: 'center', padding: '10px 20px', fontSize: 13, fontWeight: 700 }}>
+              Return to My Dashboard
+            </button>
           </div>
         </div>
       </>

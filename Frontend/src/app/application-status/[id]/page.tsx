@@ -5,12 +5,15 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { Topbar } from '@/components/layout/Topbar';
 import Link from 'next/link';
+import { useUser } from '@/lib/UserContext';
 import {
   ArrowLeft, CheckCircle, XCircle, Clock, Brain, Eye,
   AlertTriangle, Send, Upload, Bell, BellOff, FileText,
   RefreshCw, Download, Printer, ChevronDown, ChevronUp,
   History, MessageSquare, GitBranch, Shield,
 } from 'lucide-react';
+
+import { getUserHeaders } from '@/lib/api';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -292,9 +295,11 @@ function NotifItem({ n }: { n: Notification }) {
 export default function ApplicationStatusDetailPage() {
   const params = useParams();
   const id = params?.id as string;
+  const { user } = useUser();
 
   const [data, setData] = useState<AppDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [accessDenied, setAccessDenied] = useState(false);
   const [activeTab, setActiveTab] = useState<'timeline' | 'chat' | 'versions' | 'notifications'>('timeline');
 
   // Reply form
@@ -314,7 +319,12 @@ export default function ApplicationStatusDetailPage() {
 
   const load = async () => {
     try {
-      const res = await fetch(`${API}/api/application-status/${id}`);
+      const res = await fetch(`${API}/api/application-status/${id}`, { headers: getUserHeaders() });
+      if (res.status === 403) {
+        setAccessDenied(true);
+        setLoading(false);
+        return;
+      }
       if (res.ok) {
         setData(await res.json());
       }
@@ -338,8 +348,8 @@ export default function ApplicationStatusDetailPage() {
     setSendingReply(true);
     try {
       const form = new FormData();
-      form.append('author_role', 'user');
-      form.append('author_name', data.submitted_by || 'User');
+      form.append('author_role', user.role === 'state_reviewer' || user.role === 'admin' ? 'reviewer' : 'user');
+      form.append('author_name', user.displayName || user.username || data.submitted_by || 'User');
       form.append('message', replyMsg);
       if (replyFile) form.append('file', replyFile);
       await fetch(`${API}/api/application-status/${id}/comment-with-file`, { method: 'POST', body: form });
@@ -357,7 +367,7 @@ export default function ApplicationStatusDetailPage() {
     try {
       const form = new FormData();
       form.append('file', revisionFile);
-      form.append('uploaded_by', data.submitted_by || 'User');
+      form.append('uploaded_by', user.displayName || user.username || data.submitted_by || 'User');
       form.append('notes', revisionNotes);
       await fetch(`${API}/api/application-status/${id}/upload-revision`, { method: 'POST', body: form });
       setRevisionFile(null);
@@ -372,6 +382,38 @@ export default function ApplicationStatusDetailPage() {
     await fetch(`${API}/api/application-status/${id}/notifications/read?role=user`, { method: 'POST' });
     await load();
   };
+
+  const isAdminRole = ['admin', 'administrator', 'director', 'state_reviewer', 'reviewer', 'approver'].includes(user.role?.toLowerCase() || '');
+  const isPriya = (user.username || '').toLowerCase().includes('priya') || (user.displayName || '').toLowerCase().includes('priya');
+  const isFullUser = (user.username || '').toLowerCase().trim() === 'user' || (user.displayName || '').toLowerCase().includes('project requester');
+  const isAuthorized = isAdminRole || isPriya || isFullUser;
+
+  if (accessDenied) {
+    return (
+      <>
+        <Topbar title="Access Restricted" subtitle="Admin & Priya Sharma Access Only" />
+        <div className="page-content" style={{ padding: '60px 20px', textAlign: 'center', maxWidth: 600, margin: '0 auto' }}>
+          <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(239,68,68,0.12)',
+            border: '2px solid rgba(239,68,68,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            margin: '0 auto 20px', color: '#ef4444' }}>
+            <AlertTriangle size={32} />
+          </div>
+          <h2 style={{ fontSize: 22, fontWeight: 900, color: 'var(--text-primary)', marginBottom: 8 }}>
+            Access Restricted: Admin & Priya Sharma Only
+          </h2>
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 24 }}>
+            Under Karnataka PWD Role-Based Access Control, access to view Application Status details, timelines, status history, and reviewer notes is restricted exclusively to Admin and Priya Sharma.
+          </p>
+          <Link href="/application-status" style={{
+            display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 22px', borderRadius: 8,
+            background: 'var(--accent-blue)', color: 'white', fontWeight: 700, fontSize: 13, textDecoration: 'none'
+          }}>
+            <ArrowLeft size={16} /> Return to My Application Status
+          </Link>
+        </div>
+      </>
+    );
+  }
 
   if (loading) {
     return (
@@ -422,7 +464,7 @@ export default function ApplicationStatusDetailPage() {
             <button onClick={() => window.print()} className="topbar-btn" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <Printer size={13} /> Print
             </button>
-            <a href={`${API}/api/report/${data.id}`} className="topbar-btn"
+            <a href={`${API}/api/report/${data.id}`} download={`Karnataka_PWD_DPR_Report_${data.id}.txt`} className="topbar-btn"
               style={{ display: 'flex', alignItems: 'center', gap: 6, textDecoration: 'none' }} target="_blank">
               <Download size={13} /> AI Report
             </a>

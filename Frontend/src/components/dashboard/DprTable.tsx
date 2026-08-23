@@ -73,7 +73,7 @@ export function DprTable({ dprs }: DprTableProps) {
         </thead>
         <tbody>
           {dprs.map((dpr) => (
-            <tr key={dpr.id} onClick={() => router.push(`/dpr/${dpr.id}`)}>
+            <tr key={dpr.id} onClick={() => router.push(`/dpr/${dpr.id}/viewer`)} style={{ cursor: 'pointer' }}>
               <td style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--accent-blue-light)' }}>
                 {dpr.id}
               </td>

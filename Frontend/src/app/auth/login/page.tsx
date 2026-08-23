@@ -1,4 +1,4 @@
-﻿// TOPLINE
+// TOPLINE
 
 "use client";
 
@@ -41,7 +41,10 @@ export default function LoginPage() {
       const data = await res.json();
       localStorage.setItem("auth_token", data.access_token);
       localStorage.setItem("username", loginId);
-      router.push("/");
+      const userRole = data.role || (loginId.toLowerCase().includes('admin') ? 'admin' : (loginId.toLowerCase().includes('viewer') ? 'viewer' : 'submitter'));
+      if (userRole === 'admin') router.push("/admin/dashboard");
+      else if (userRole === 'viewer') router.push("/viewer/dashboard");
+      else router.push("/user/dashboard");
     } catch {
       setError("Cannot connect to the server. Please try again.");
       setLoading(false);

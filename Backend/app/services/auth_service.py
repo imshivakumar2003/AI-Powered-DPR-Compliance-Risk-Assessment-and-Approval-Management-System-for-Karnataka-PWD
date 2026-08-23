@@ -1,4 +1,4 @@
-﻿# TOPLINE
+# TOPLINE
 
 import sqlite3
 import os
@@ -31,6 +31,7 @@ def _verify_password(plain: str, hashed: str) -> bool:
 # ---- Pydantic Models ----
 
 class UserInDB(BaseModel):
+    id: Optional[int] = None
     username: str
     full_name: str
     email: str
@@ -184,6 +185,7 @@ def get_user(username: str) -> Optional[UserInDB]:
     if row is None:
         return None
     return UserInDB(
+        id=row["id"],
         username=row["username"],
         full_name=row["full_name"],
         email=row["email"],
@@ -204,6 +206,7 @@ def get_user_by_email(email: str) -> Optional[UserInDB]:
     if row is None:
         return None
     return UserInDB(
+        id=row["id"],
         username=row["username"],
         full_name=row["full_name"],
         email=row["email"],

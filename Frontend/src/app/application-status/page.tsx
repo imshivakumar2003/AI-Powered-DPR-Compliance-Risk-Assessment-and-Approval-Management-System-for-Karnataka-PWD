@@ -5,10 +5,11 @@ import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Topbar } from '@/components/layout/Topbar';
 import { useUser } from '@/lib/UserContext';
+import { getUserHeaders } from '@/lib/api';
 import Link from 'next/link';
 import {
   ClipboardCheck, Search, Filter, RefreshCw, Clock, CheckCircle,
-  XCircle, FileText, Eye, AlertTriangle, Brain, Lock,
+  XCircle, FileText, Eye, AlertTriangle, Brain, Lock, ShieldAlert,
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -175,36 +176,26 @@ function DprCard({ dpr }: { dpr: AppStatus }) {
 function AccessDenied({ onBack }: { onBack: () => void }) {
   return (
     <>
-      <Topbar title="Application Status" subtitle="Access restricted" />
+      <Topbar title="Application Status" subtitle="Access Restricted" />
       <div className="page-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400 }}>
-        <div style={{ textAlign: 'center', maxWidth: 340 }}>
-          <div style={{ width: 60, height: 60, borderRadius: '50%', background: 'rgba(239,68,68,0.1)',
+        <div style={{ textAlign: 'center', maxWidth: 420 }}>
+          <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(239,68,68,0.1)',
             border: '2px solid rgba(239,68,68,0.25)', display: 'flex', alignItems: 'center',
             justifyContent: 'center', margin: '0 auto 18px', color: '#ef4444' }}>
-            <Lock size={24} />
+            <Lock size={28} />
           </div>
-          <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 10 }}>
-            Access Restricted
+          <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--text-primary)', marginBottom: 10 }}>
+            Access Restricted: Admin & Priya Sharma Only
           </div>
           <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.7, marginBottom: 24 }}>
-            The <strong style={{ color: 'var(--text-secondary)' }}>Application Status</strong> page is
-            exclusively for DPR submitters.<br />
-            Admins and reviewers should use <strong style={{ color: 'var(--text-secondary)' }}>DPR Queue</strong>,{' '}
-            <strong style={{ color: 'var(--text-secondary)' }}>AI Suggestions</strong>, and{' '}
-            <strong style={{ color: 'var(--text-secondary)' }}>My Approvals</strong>.
+            Under Karnataka PWD Access Control Regulations, access to view Application Status details, timelines, status history, and reviewer notes is restricted exclusively to <strong style={{ color: 'var(--text-primary)' }}>Admin</strong> and <strong style={{ color: 'var(--text-primary)' }}>Priya Sharma</strong>.
           </div>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
             <button onClick={onBack}
               style={{ padding: '9px 20px', borderRadius: 8, background: 'var(--accent-blue)',
                 color: 'white', border: 'none', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-              Go to Dashboard
+              Return to Dashboard
             </button>
-            <Link href="/dpr/queue"
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 8,
-                background: 'var(--bg-secondary)', color: 'var(--text-secondary)',
-                border: '1px solid var(--border)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
-              DPR Queue
-            </Link>
           </div>
         </div>
       </div>
@@ -220,59 +211,32 @@ export default function ApplicationStatusPage() {
   const [allDprs, setAllDprs] = useState<AppStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [accessDenied, setAccessDenied] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [districtFilter, setDistrictFilter] = useState('');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  const load = async (showRefresh = false) => {
-    if (showRefresh) setRefreshing(true);
+  const load = async (showRefreshing = false) => {
+    if (showRefreshing) setRefreshing(true);
     try {
-      const res = await fetch(`${API}/api/application-status`);
+      const res = await fetch(`${API}/api/application-status`, { headers: getUserHeaders() });
+      if (res.status === 403) {
+        setAccessDenied(true);
+        return;
+      }
       if (res.ok) { setAllDprs(await res.json()); setLastUpdated(new Date()); }
     } finally { setLoading(false); setRefreshing(false); }
   };
 
   useEffect(() => {
-    if (isLoaded && user.role === 'submitter') load();
-    else if (isLoaded) setLoading(false);
+    if (isLoaded) load();
   }, [isLoaded, user.role]);
 
-  // ── User-scoped DPR filter ──
-  const myDprs = useMemo(() => {
-    if (!user.username) return allDprs;
-    const uname = user.username.toLowerCase();
-    const udisp = user.displayName.toLowerCase();
-    const matched = allDprs.filter(d => {
-      const sub = (d.submitted_by || '').toLowerCase();
-      return sub.includes(uname) || sub.includes(udisp) || uname.includes(sub);
-    });
-    // If filter produces empty (department name mismatch), show all owned DPRs
-    return matched.length > 0 ? matched : allDprs;
-  }, [allDprs, user.username, user.displayName]);
-
-  const districts = useMemo(() => [...new Set(myDprs.map(d => d.district))].sort(), [myDprs]);
-
-  const filtered = useMemo(() => {
-    return myDprs.filter(d => {
-      if (statusFilter && d.status?.toUpperCase() !== statusFilter) return false;
-      if (districtFilter && d.district !== districtFilter) return false;
-      if (search) {
-        const q = search.toLowerCase();
-        return d.title.toLowerCase().includes(q)
-          || d.ref_number.toLowerCase().includes(q)
-          || d.district.toLowerCase().includes(q);
-      }
-      return true;
-    });
-  }, [myDprs, statusFilter, districtFilter, search]);
-
-  const counts = useMemo(() => ({
-    total:    myDprs.length,
-    pending:  myDprs.filter(d => ['PENDING', 'PENDING_INFO'].includes(d.status?.toUpperCase())).length,
-    approved: myDprs.filter(d => d.status?.toUpperCase() === 'APPROVED').length,
-    rejected: myDprs.filter(d => d.status?.toUpperCase() === 'REJECTED').length,
-  }), [myDprs]);
+  const isAdminRole = ['admin', 'administrator', 'director', 'state_reviewer', 'reviewer', 'approver'].includes(user.role?.toLowerCase() || '');
+  const isPriya = (user.username || '').toLowerCase().includes('priya') || (user.displayName || '').toLowerCase().includes('priya');
+  const isFullUser = (user.username || '').toLowerCase().trim() === 'user' || (user.displayName || '').toLowerCase().includes('project requester');
+  const isAuthorized = isAdminRole || isPriya || isFullUser;
 
   // ── RBAC guard ──
   if (!isLoaded) {
@@ -287,30 +251,51 @@ export default function ApplicationStatusPage() {
     );
   }
 
-  if (user.role !== 'submitter') {
-    return <AccessDenied onBack={() => router.push('/')} />;
+  if (accessDenied) {
+    return <AccessDenied onBack={() => router.push('/user/dashboard')} />;
   }
 
   if (loading) {
     return (
       <>
-        <Topbar title="Application Status" subtitle="Loading your DPRs…" />
+        <Topbar title="Application Status" subtitle="Loading DPR applications…" />
         <div className="page-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400 }}>
           <div style={{ textAlign: 'center' }}>
             <div style={{ width: 44, height: 44, borderRadius: '50%', border: '3px solid var(--border)',
               borderTopColor: 'var(--accent-blue)', margin: '0 auto 14px', animation: 'spin 1s linear infinite' }} />
-            <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Fetching your submitted DPRs…</div>
+            <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Fetching DPR application statuses…</div>
           </div>
         </div>
       </>
     );
   }
 
+  const isViewer = user.role === 'viewer';
+  const myDprs = allDprs;
+  const districts = Array.from(new Set(myDprs.map(d => d.district).filter(Boolean))).sort();
+  const counts = {
+    total: myDprs.length,
+    pending: myDprs.filter(d => ['PENDING', 'PENDING_INFO'].includes(d.status?.toUpperCase())).length,
+    approved: myDprs.filter(d => d.status?.toUpperCase() === 'APPROVED').length,
+    rejected: myDprs.filter(d => d.status?.toUpperCase() === 'REJECTED').length,
+  };
+  const filtered = myDprs.filter(d => {
+    if (statusFilter && d.status?.toUpperCase() !== statusFilter) return false;
+    if (districtFilter && d.district !== districtFilter) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      return (d.title || '').toLowerCase().includes(q)
+        || (d.ref_number || '').toLowerCase().includes(q)
+        || (d.district || '').toLowerCase().includes(q);
+    }
+    return true;
+  });
+
   return (
     <>
       <Topbar
         title="Application Status"
-        subtitle={`My DPR applications · ${counts.total} submitted`}
+        subtitle={isViewer ? `DPR Application Tracker · ${counts.total} total applications` : `My DPR applications · ${counts.total} submitted`}
         actions={
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             {lastUpdated && (
@@ -336,19 +321,22 @@ export default function ApplicationStatusPage() {
 
         {/* User context banner */}
         <div style={{ padding: '10px 16px', borderRadius: 9, marginBottom: 18,
-          background: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.18)',
+          background: isViewer ? 'rgba(6,182,212,0.07)' : 'rgba(34,197,94,0.07)',
+          border: `1px solid ${isViewer ? 'rgba(6,182,212,0.18)' : 'rgba(34,197,94,0.18)'}`,
           display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 32, height: 32, borderRadius: '50%',
-            background: 'linear-gradient(135deg, #22c55e, #16a34a)',
+            background: isViewer ? 'linear-gradient(135deg, #06b6d4, #0891b2)' : 'linear-gradient(135deg, #22c55e, #16a34a)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 12, fontWeight: 900, color: 'white', flexShrink: 0 }}>
             {user.displayName.slice(0, 2).toUpperCase()}
           </div>
           <div>
             <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
-              Showing DPRs for{' '}
-              <strong style={{ color: '#4ade80' }}>{user.displayName}</strong>
-              {user.department ? <span style={{ color: 'var(--text-muted)' }}> · {user.department}</span> : null}
+              {isViewer ? (
+                <>Viewer Mode · Tracking <strong style={{ color: '#22d3ee' }}>all DPR applications</strong> across Karnataka PWD</>
+              ) : (
+                <>Showing DPRs for <strong style={{ color: '#4ade80' }}>{user.displayName}</strong>{user.department ? <span style={{ color: 'var(--text-muted)' }}> · {user.department}</span> : null}</>
+              )}
             </span>
           </div>
         </div>

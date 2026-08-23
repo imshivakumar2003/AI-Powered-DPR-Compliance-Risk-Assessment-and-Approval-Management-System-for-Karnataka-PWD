@@ -1,4 +1,4 @@
-﻿// TOPLINE
+// TOPLINE
 
 "use client";
 
@@ -27,7 +27,7 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
-  const [state, setState] = useState("Assam");
+  const [state, setState] = useState("Karnataka");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);

@@ -9,6 +9,7 @@ import {
   ArrowLeft, ZoomIn, ZoomOut, Download, Printer,
   FileText, AlertCircle, RotateCcw,
 } from 'lucide-react';
+import { getUserHeaders } from '@/lib/api';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -37,8 +38,9 @@ export default function DprViewerPage() {
     setStatus('loading');
     setErrorMsg('');
 
-    fetch(`${API_BASE}/api/dpr/${dprId}/info`)
+    fetch(`${API_BASE}/api/dpr/${dprId}/info`, { headers: getUserHeaders() })
       .then(res => {
+        if (res.status === 403) throw new Error('Access Denied (HTTP 403): You do not have permission to view or access this DPR.');
         if (!res.ok) throw new Error(`Project not found (HTTP ${res.status})`);
         return res.json() as Promise<DprInfo>;
       })

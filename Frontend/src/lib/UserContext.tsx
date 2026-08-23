@@ -1,4 +1,4 @@
-﻿// TOPLINE
+// TOPLINE
 'use client';
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
@@ -6,6 +6,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 export type UserRole = 'admin' | 'state_reviewer' | 'submitter' | 'viewer';
 
 export interface CurrentUser {
+  id?: string | number;
   username: string;
   role: UserRole;
   displayName: string;
@@ -28,17 +29,22 @@ function mapBackendRole(backendRole: string): UserRole {
 
 // Display info per username
 const USER_DISPLAY: Record<string, Omit<CurrentUser, 'username' | 'role'>> = {
-  admin: { displayName: 'Rajiv Sharma',  department: 'Director General, Karnataka PWD HQ' },
-  user:  { displayName: 'Priya Gogoi',   department: 'State Reviewer, Assam DoT',      state: 'Assam' },
-  test:  { displayName: 'Temjen Wati',   department: 'DPR Submitter, Nagaland PWD',    state: 'Nagaland' },
+  admin: { id: "1", displayName: 'Master Admin', department: 'Director General, Karnataka PWD HQ', state: 'Karnataka' },
+  user:  { id: "3", displayName: 'Project Requester', department: 'State PWD', state: 'Karnataka' },
+  test:  { id: "2", displayName: 'Test User', department: 'DPR Submitter, Karnataka PWD (Belagavi Circle)', state: 'Karnataka' },
+  shiva123: { id: "4", displayName: 'Shiva', department: 'General', state: 'Karnataka' },
+  Shiva2003: { id: "5", displayName: 'Shiva', department: 'General', state: 'Karnataka' },
+  sagar: { id: "6", displayName: 'sagar', department: 'General', state: 'Karnataka' },
+  chaya: { id: "7", displayName: 'chaya', department: 'General', state: 'Karnataka' },
 };
 
-function buildUser(username: string, backendRole: string): CurrentUser {
+function buildUser(username: string, backendRole: string, id?: string | number): CurrentUser {
   const display = USER_DISPLAY[username] ?? {
+    id: id || "1",
     displayName: username.charAt(0).toUpperCase() + username.slice(1),
     department: 'Government Official',
   };
-  return { username, role: mapBackendRole(backendRole), ...display };
+  return { id: id || display.id, username, role: mapBackendRole(backendRole), ...display };
 }
 
 const DEFAULT_USER: CurrentUser = {

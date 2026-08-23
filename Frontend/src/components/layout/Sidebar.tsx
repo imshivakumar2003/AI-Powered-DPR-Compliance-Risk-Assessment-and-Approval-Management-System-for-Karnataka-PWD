@@ -1,40 +1,46 @@
 // TOPLINE
 'use client';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useUser } from '@/lib/UserContext';
 import {
+  fetchDashboardStats, fetchRiskAlerts, fetchRecommendations, fetchProjects
+} from '@/lib/api';
+import {
   LayoutDashboard, FileText, Upload, BarChart3, Map,
   Settings, Users, ShieldAlert, CheckCircle, LogOut,
-  Lightbulb, BookOpen, ClipboardList, Send, Eye, Sparkles, ClipboardCheck,
+  Lightbulb, BookOpen, ClipboardList, Send, Eye, Sparkles, ClipboardCheck, FolderKanban,
+  Brain, Clock,
 } from 'lucide-react';
 
 // ── Nav per role ──
 const ADMIN_NAV = [
   {
-    section: 'Main',
+    section: 'Core Management',
     items: [
-      { href: '/', label: 'Dashboard', icon: LayoutDashboard, badge: null },
-      { href: '/dpr/queue', label: 'DPR Queue', icon: FileText, badge: '42', badgeColor: 'amber' },
+      { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard, badge: null },
+      { href: '/admin/dpr-management', label: 'DPR Management', icon: FolderKanban, badge: 'All', badgeColor: 'blue' },
+      { href: '/dpr/queue', label: 'Pending Reviews', icon: Clock, badge: 'queue', badgeColor: 'amber' },
+      { href: '/approvals', label: 'Approvals Workflow', icon: CheckCircle, badge: 'approvals', badgeColor: 'green' },
       { href: '/dpr/upload', label: 'Upload DPR', icon: Upload, badge: null },
-      { href: '/dpr-guide', label: 'DPR Guide', icon: BookOpen, badge: 'New', badgeColor: 'green' },
     ],
   },
   {
-    section: 'Intelligence',
+    section: 'Intelligence & Analytics',
     items: [
-      { href: '/analytics', label: 'Analytics', icon: BarChart3, badge: null },
-      { href: '/ai-suggestions', label: 'AI Suggestions', icon: Sparkles, badge: null },
-      { href: '/recommendations', label: 'Recommendations', icon: Lightbulb, badge: '10', badgeColor: 'amber' },
+      { href: '/ai-suggestions', label: 'AI Analysis', icon: Brain, badge: 'AI', badgeColor: 'blue' },
+      { href: '/analytics', label: 'Reports & Analytics', icon: BarChart3, badge: null },
+      { href: '/recommendations', label: 'Recommendations', icon: Lightbulb, badge: 'recs', badgeColor: 'amber' },
       { href: '/risk-map', label: 'Risk Map', icon: Map, badge: null },
-      { href: '/risk-alerts', label: 'Risk Alerts', icon: ShieldAlert, badge: '18', badgeColor: 'red' },
+      { href: '/risk-alerts', label: 'Risk Alerts', icon: ShieldAlert, badge: 'alerts', badgeColor: 'red' },
     ],
   },
   {
     section: 'Administration',
     items: [
-      { href: '/approvals', label: 'Approvals', icon: CheckCircle, badge: '7', badgeColor: 'amber' },
-      { href: '/users', label: 'User Management', icon: Users, badge: null },
+      { href: '/users', label: 'Users & Roles', icon: Users, badge: null },
+      { href: '/admin/templates', label: 'DPR Templates', icon: FileText, badge: 'New', badgeColor: 'green' },
       { href: '/settings', label: 'Settings', icon: Settings, badge: null },
     ],
   },
@@ -44,9 +50,9 @@ const REVIEWER_NAV = [
   {
     section: 'My State',
     items: [
-      { href: '/', label: 'Dashboard', icon: LayoutDashboard, badge: null },
-      { href: '/dpr/queue', label: 'DPRs for Review', icon: FileText, badge: null },
-      { href: '/approvals', label: 'My Approvals', icon: CheckCircle, badge: '3', badgeColor: 'amber' },
+      { href: '/user/dashboard', label: 'User Dashboard', icon: LayoutDashboard, badge: null },
+      { href: '/dpr/queue', label: 'DPRs for Review', icon: FileText, badge: 'queue', badgeColor: 'amber' },
+      { href: '/approvals', label: 'My Approvals', icon: CheckCircle, badge: 'approvals', badgeColor: 'amber' },
     ],
   },
   {
@@ -54,13 +60,14 @@ const REVIEWER_NAV = [
     items: [
       { href: '/analytics', label: 'Analytics', icon: BarChart3, badge: null },
       { href: '/ai-suggestions', label: 'AI Suggestions', icon: Sparkles, badge: null },
-      { href: '/recommendations', label: 'Recommendations', icon: Lightbulb, badge: null },
-      { href: '/risk-alerts', label: 'Risk Alerts', icon: ShieldAlert, badge: null },
+      { href: '/recommendations', label: 'Recommendations', icon: Lightbulb, badge: 'recs', badgeColor: 'amber' },
+      { href: '/risk-alerts', label: 'Risk Alerts', icon: ShieldAlert, badge: 'alerts', badgeColor: 'red' },
     ],
   },
   {
     section: 'Reference',
     items: [
+      { href: '/user/templates', label: 'DPR Templates', icon: FileText, badge: 'Templates', badgeColor: 'green' },
       { href: '/dpr-guide', label: 'DPR Guide', icon: BookOpen, badge: null },
       { href: '/settings', label: 'Settings', icon: Settings, badge: null },
     ],
@@ -71,17 +78,18 @@ const SUBMITTER_NAV = [
   {
     section: 'Dashboard',
     items: [
-      { href: '/', label: 'Dashboard', icon: LayoutDashboard, badge: null },
+      { href: '/user/dashboard', label: 'User Dashboard', icon: LayoutDashboard, badge: null },
       { href: '/dpr/upload', label: 'Upload DPR', icon: Send, badge: null },
-      { href: '/dpr/queue', label: 'My DPRs', icon: ClipboardList, badge: null },
-      { href: '/application-status', label: 'Application Status', icon: ClipboardCheck, badge: null },
+      { href: '/dpr/queue', label: 'My DPRs', icon: ClipboardList, badge: 'queue', badgeColor: 'amber' },
+      { href: '/application-status', label: 'Application Status', icon: ClipboardCheck, badge: 'app_status', badgeColor: 'blue' },
     ],
   },
   {
     section: 'Reference',
     items: [
+      { href: '/user/templates', label: 'DPR Templates', icon: FileText, badge: 'Templates', badgeColor: 'green' },
       { href: '/dpr-guide', label: 'DPR Guide', icon: BookOpen, badge: 'New', badgeColor: 'green' },
-      { href: '/recommendations', label: 'AI Suggestions', icon: Lightbulb, badge: null },
+      { href: '/recommendations', label: 'AI Suggestions', icon: Lightbulb, badge: 'recs', badgeColor: 'amber' },
       { href: '/settings', label: 'Settings', icon: Settings, badge: null },
     ],
   },
@@ -91,20 +99,60 @@ const VIEWER_NAV = [
   {
     section: 'Overview',
     items: [
-      { href: '/', label: 'Dashboard', icon: LayoutDashboard, badge: null },
-      { href: '/dpr/queue', label: 'DPR Queue', icon: Eye, badge: null },
+      { href: '/viewer/dashboard', label: 'Viewer Dashboard', icon: LayoutDashboard, badge: null },
+      { href: '/dpr/queue', label: 'DPR Queue', icon: Eye, badge: 'queue', badgeColor: 'amber' },
+      { href: '/application-status', label: 'Application Status', icon: ClipboardCheck, badge: 'app_status', badgeColor: 'blue' },
     ],
   },
   {
-    section: 'Insights',
+    section: 'Insights & Reference',
     items: [
+      { href: '/user/templates', label: 'DPR Templates', icon: FileText, badge: 'Templates', badgeColor: 'green' },
+      { href: '/dpr/upload', label: 'Upload DPR', icon: Upload, badge: null },
       { href: '/analytics', label: 'Analytics', icon: BarChart3, badge: null },
       { href: '/risk-map', label: 'Risk Map', icon: Map, badge: null },
     ],
   },
 ];
 
-function getNav(role: string) {
+const FULL_USER_NAV = [
+  {
+    section: 'Main',
+    items: [
+      { href: '/user/dashboard', label: 'User Dashboard', icon: LayoutDashboard, badge: null },
+      { href: '/dpr/queue', label: 'DPR Queue', icon: FileText, badge: 'queue', badgeColor: 'amber' },
+      { href: '/dpr/upload', label: 'Upload DPR', icon: Upload, badge: null },
+      { href: '/application-status', label: 'Application Status', icon: ClipboardCheck, badge: 'app_status', badgeColor: 'blue' },
+      { href: '/approvals', label: 'Approvals', icon: CheckCircle, badge: 'approvals', badgeColor: 'amber' },
+    ],
+  },
+  {
+    section: 'Intelligence',
+    items: [
+      { href: '/analytics', label: 'Analytics', icon: BarChart3, badge: null },
+      { href: '/ai-suggestions', label: 'AI Suggestions', icon: Sparkles, badge: null },
+      { href: '/recommendations', label: 'Recommendations', icon: Lightbulb, badge: 'recs', badgeColor: 'amber' },
+      { href: '/risk-map', label: 'Risk Map', icon: Map, badge: null },
+      { href: '/risk-alerts', label: 'Risk Alerts', icon: ShieldAlert, badge: 'alerts', badgeColor: 'red' },
+    ],
+  },
+  {
+    section: 'Insights & Reference',
+    items: [
+      { href: '/user/templates', label: 'DPR Templates', icon: FileText, badge: 'Templates', badgeColor: 'green' },
+      { href: '/dpr-guide', label: 'DPR Guide', icon: BookOpen, badge: 'New', badgeColor: 'green' },
+    ],
+  },
+];
+
+function getNav(role: string, username?: string) {
+  const u = (username || '').toLowerCase().trim();
+  if (u === 'user' || u.includes('project requester')) {
+    return FULL_USER_NAV;
+  }
+  if (u === 'priya_sharma' || u.includes('priya')) {
+    return ADMIN_NAV;
+  }
   switch (role) {
     case 'admin': return ADMIN_NAV;
     case 'state_reviewer': return REVIEWER_NAV;
@@ -120,12 +168,78 @@ const ROLE_LABELS: Record<string, { label: string; color: string }> = {
   viewer: { label: 'Viewer', color: '#06b6d4' },
 };
 
+interface SidebarCounts {
+  queue: number;
+  approvals: number;
+  riskAlerts: number;
+  recommendations: number;
+  applicationStatus: number;
+}
+
 export function Sidebar() {
   const pathname = usePathname();
   const { user, logout } = useUser();
-  const navItems = getNav(user.role);
-  const roleInfo = ROLE_LABELS[user.role] ?? ROLE_LABELS['viewer'];
+  const navItems = getNav(user.role, user.username);
+  const isFullUser = (user.username || '').toLowerCase().trim() === 'user' || (user.displayName || '').toLowerCase().includes('project requester');
+  const roleInfo = isFullUser ? { label: 'Project Requester', color: '#3b82f6' } : (ROLE_LABELS[user.role] ?? ROLE_LABELS['viewer']);
   const initials = user.displayName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+
+  const [counts, setCounts] = useState<SidebarCounts>({
+    queue: 0,
+    approvals: 0,
+    riskAlerts: 0,
+    recommendations: 0,
+    applicationStatus: 0,
+  });
+
+  const loadCounts = async () => {
+    try {
+      const [stats, alerts, recs, projects] = await Promise.all([
+        fetchDashboardStats().catch(() => null),
+        fetchRiskAlerts().catch(() => []),
+        fetchRecommendations().catch(() => []),
+        fetchProjects().catch(() => []),
+      ]);
+
+      const pendingApprovals = projects.filter(p => p.status?.toUpperCase() === 'PENDING' || p.in_approvals).length;
+      const pendingAlerts = alerts.filter(a => a.status === 'Pending').length;
+
+      setCounts({
+        queue: projects.length || stats?.total_dprs || 0,
+        approvals: pendingApprovals || stats?.pending_review || 0,
+        riskAlerts: pendingAlerts,
+        recommendations: recs.length,
+        applicationStatus: projects.length || stats?.total_dprs || 0,
+      });
+    } catch (e) {
+      console.error('Error fetching sidebar counts:', e);
+    }
+  };
+
+  useEffect(() => {
+    loadCounts();
+    const timer = setInterval(loadCounts, 10_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const getDynamicBadge = (href: string, defaultBadge: string | null, badgeColor?: string) => {
+    if (defaultBadge === 'New') return { label: 'New', color: 'green' };
+
+    switch (href) {
+      case '/dpr/queue':
+        return counts.queue > 0 ? { label: String(counts.queue), color: 'amber' } : null;
+      case '/approvals':
+        return counts.approvals > 0 ? { label: String(counts.approvals), color: 'amber' } : null;
+      case '/risk-alerts':
+        return counts.riskAlerts > 0 ? { label: String(counts.riskAlerts), color: 'red' } : null;
+      case '/recommendations':
+        return counts.recommendations > 0 ? { label: String(counts.recommendations), color: 'amber' } : null;
+      case '/application-status':
+        return counts.applicationStatus > 0 ? { label: String(counts.applicationStatus), color: 'blue' } : null;
+      default:
+        return defaultBadge ? { label: defaultBadge, color: badgeColor } : null;
+    }
+  };
 
   return (
     <aside className="sidebar">
@@ -156,15 +270,17 @@ export function Sidebar() {
           <div key={section.section}>
             <div className="sidebar-section-title">{section.section}</div>
             {section.items.map((item) => {
-              const Icon = item.icon;
+              const Icon = item.icon || LayoutDashboard;
               const isActive = pathname === item.href || (item.href !== '/' && pathname?.startsWith(item.href));
+              const badgeInfo = getDynamicBadge(item.href, item.badge, item.badgeColor);
+
               return (
                 <Link key={item.href} href={item.href} className={`sidebar-item ${isActive ? 'active' : ''}`}>
                   <Icon className="sidebar-item-icon" size={17} />
                   {item.label}
-                  {item.badge && (
-                    <span className={`sidebar-badge ${item.badgeColor === 'red' ? 'red' : ''}`}>
-                      {item.badge}
+                  {badgeInfo && (
+                    <span className={`sidebar-badge ${badgeInfo.color === 'red' ? 'red' : badgeInfo.color === 'blue' ? 'blue' : ''}`}>
+                      {badgeInfo.label}
                     </span>
                   )}
                 </Link>
