@@ -19,6 +19,7 @@ import {
   DprWorkflowDetailResponse, DepartmentStage, ApprovalCertificate,
   AiApprovalAssistantInsights
 } from '@/lib/api';
+import { AiScoreBadge, DprScoreStrip } from '@/components/common/AiScoreBadges';
 
 const DEPARTMENTS = [
   { key: 'technical', name: 'Technical Review', role: 'Chief Engineer (Technical)' },
@@ -461,6 +462,23 @@ export default function ApprovalsPage() {
                     </div>
                   </div>
 
+                  {/* AI Evaluation Scores Strip */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, padding: '8px 12px', background: 'rgba(59, 130, 246, 0.08)', borderRadius: 6, border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Sparkles size={14} color="#3b82f6" />
+                      <span style={{ fontSize: 11.5, fontWeight: 700, color: '#fff' }}>AI Analysis Scores:</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <AiScoreBadge score={wf.overall_ai_score} label="Overall AI" size="xs" />
+                      <AiScoreBadge score={wf.dpr_quality_score} label="Quality" size="xs" />
+                      <AiScoreBadge score={wf.compliance_score} label="Compliance" size="xs" />
+                      <AiScoreBadge score={wf.risk_score} label="Risk" size="xs" isRisk={true} />
+                      <AiScoreBadge score={wf.technical_score} label="Technical" size="xs" />
+                      <AiScoreBadge score={wf.financial_score} label="Financial" size="xs" />
+                      <AiScoreBadge score={wf.approval_readiness_score} label="Readiness" size="xs" />
+                    </div>
+                  </div>
+
                   {/* ── 4. 5-STAGE SEQUENTIAL VISUAL WORKFLOW STEPPER ── */}
                   <div style={{ background: 'rgba(0,0,0,0.3)', padding: '14px 16px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.06)' }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>
@@ -745,6 +763,22 @@ export default function ApprovalsPage() {
                   className="select-field"
                   style={{ width: '100%', fontSize: 12 }}
                 />
+              </div>
+            </div>
+
+            {/* AI Decision Support Pre-Check */}
+            <div style={{ padding: '10px 12px', background: 'rgba(59, 130, 246, 0.08)', borderRadius: 8, border: '1px solid rgba(59, 130, 246, 0.25)' }}>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                <Sparkles size={13} color="#3b82f6" /> AI Decision Pre-Check Scores:
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <AiScoreBadge score={actionModalDpr?.overall_ai_score} label="Overall AI" size="xs" />
+                <AiScoreBadge score={actionModalDpr?.dpr_quality_score} label="Quality" size="xs" />
+                <AiScoreBadge score={actionModalDpr?.compliance_score} label="Compliance" size="xs" />
+                <AiScoreBadge score={actionModalDpr?.risk_score} label="Risk" size="xs" isRisk={true} />
+                <AiScoreBadge score={actionModalDpr?.technical_score} label="Technical" size="xs" />
+                <AiScoreBadge score={actionModalDpr?.financial_score} label="Financial" size="xs" />
+                <AiScoreBadge score={actionModalDpr?.approval_readiness_score} label="Readiness" size="xs" />
               </div>
             </div>
 

@@ -7,8 +7,8 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTheme } from "@/lib/ThemeContext";
-
-const API_URL = "http://localhost:8000";
+import { useUser } from "@/lib/UserContext";
+import { loginUser } from "@/lib/api";
 
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
@@ -19,34 +19,52 @@ export default function LoginPage() {
   const [mounted, setMounted] = useState(false);
   const router = useRouter();
   const { setTheme, resolvedTheme } = useTheme();
+  const { login, isLoggedIn, user } = useUser();
 
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    setMounted(true);
+    // If already logged in, redirect directly to appropriate dashboard
+    if (isLoggedIn && user?.role) {
+      if (user.role === 'admin') router.replace("/admin/dashboard");
+      else if (user.role === 'viewer') router.replace("/viewer/dashboard");
+      else router.replace("/user/dashboard");
+    }
+  }, [isLoggedIn, user, router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
+    const cleanId = loginId.trim();
+    if (!cleanId || !password) {
+      setError("Please enter both Login ID and password.");
+      return;
+    }
+
     setError("");
     setLoading(true);
+
     try {
-      const res = await fetch(`${API_URL}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: loginId, password }),
+      const data = await loginUser(cleanId, password);
+      // Synchronously commit auth state to UserContext, localStorage, sessionStorage, and cookies
+      const authenticatedUser = login(data.access_token, {
+        username: data.username || cleanId,
+        role: data.role,
+        full_name: data.full_name,
+        email: data.email,
+        department: data.department,
+        id: data.id,
       });
-      if (!res.ok) {
-        const data = await res.json();
-        setError(data.detail || "Invalid Login ID or password");
-        setLoading(false);
-        return;
+
+      // Immediate role-based redirection without page refresh
+      if (authenticatedUser.role === 'admin') {
+        router.push("/admin/dashboard");
+      } else if (authenticatedUser.role === 'viewer') {
+        router.push("/viewer/dashboard");
+      } else {
+        router.push("/user/dashboard");
       }
-      const data = await res.json();
-      localStorage.setItem("auth_token", data.access_token);
-      localStorage.setItem("username", loginId);
-      const userRole = data.role || (loginId.toLowerCase().includes('admin') ? 'admin' : (loginId.toLowerCase().includes('viewer') ? 'viewer' : 'submitter'));
-      if (userRole === 'admin') router.push("/admin/dashboard");
-      else if (userRole === 'viewer') router.push("/viewer/dashboard");
-      else router.push("/user/dashboard");
-    } catch {
-      setError("Cannot connect to the server. Please try again.");
+    } catch (err: any) {
+      setError(err?.message || "Invalid Login ID or password. Please try again.");
       setLoading(false);
     }
   };

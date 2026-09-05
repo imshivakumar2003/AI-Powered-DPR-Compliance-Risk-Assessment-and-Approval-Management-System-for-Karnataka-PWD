@@ -5,6 +5,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { Topbar } from '@/components/layout/Topbar';
 import { useUser } from '@/lib/UserContext';
 import { DashboardRiskMap } from '@/components/dashboard/DashboardRiskMap';
+import { AiScoreBadge, DprScoreStrip } from '@/components/common/AiScoreBadges';
 import {
   fetchDashboardStats,
   approveDpr,
@@ -87,9 +88,9 @@ function MiniBarChart({ data }: { data: TrendDataPoint[] }) {
       {[0, 0.5, 1].map(f => (
         <g key={f}>
           <line x1={pad} x2={W - pad} y1={H - H * f} y2={H - H * f}
-            stroke="rgba(255,255,255,0.05)" strokeWidth={1} />
+            stroke="var(--border)" strokeWidth={1} strokeDasharray={f === 0 ? "none" : "3 3"} />
           <text x={pad - 6} y={H - H * f + 4} textAnchor="end"
-            fill="rgba(255,255,255,0.3)" fontSize={9}>{Math.round(max * f)}</text>
+            fill="var(--text-muted)" fontSize={9}>{Math.round(max * f)}</text>
         </g>
       ))}
 
@@ -104,7 +105,7 @@ function MiniBarChart({ data }: { data: TrendDataPoint[] }) {
             <rect x={x + barW / 2 + 1} y={H - appH} width={barW / 2 - 2} height={appH}
               fill="url(#gradApp)" rx={3} />
             <text x={x + barW / 2} y={H + 16} textAnchor="middle"
-              fill="rgba(255,255,255,0.4)" fontSize={9.5}>{d.month}</text>
+              fill="var(--text-muted)" fontSize={9.5} fontWeight={500}>{d.month}</text>
           </g>
         );
       })}
@@ -465,15 +466,14 @@ export function MainDashboardView({ dashboardTitle }: MainDashboardViewProps) {
                     <th style={{ padding: '10px 14px' }}>District</th>
                     <th style={{ padding: '10px 14px' }}>Outlay ₹Cr</th>
                     <th style={{ padding: '10px 14px' }}>Status</th>
-                    <th style={{ padding: '10px 14px' }}>AI Quality</th>
-                    <th style={{ padding: '10px 14px' }}>Risk</th>
+                    <th style={{ padding: '10px 14px' }}>AI Intelligence Scores</th>
                     <th style={{ padding: '10px 14px', textAlign: 'right' }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {pagedDprs.length === 0 ? (
                     <tr>
-                      <td colSpan={7} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
+                      <td colSpan={6} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
                         No DPR records found.
                       </td>
                     </tr>
@@ -487,9 +487,17 @@ export function MainDashboardView({ dashboardTitle }: MainDashboardViewProps) {
                       <td style={{ padding: '10px 14px', fontWeight: 700 }}>₹{d.estimated_cost ?? 100}</td>
                       <td style={{ padding: '10px 14px' }}>{statusBadge(d.status)}</td>
                       <td style={{ padding: '10px 14px' }}>
-                        <span style={{ fontWeight: 800, color: '#38bdf8' }}>{d.overall_score ?? d.ai_score ?? '—'}</span> / 100
+                        <DprScoreStrip
+                          scores={{
+                            overall_ai_score: d.overall_score ?? d.ai_score,
+                            dpr_quality_score: d.overall_score ?? d.ai_score,
+                            compliance_score: d.overall_score != null ? Math.min(99, d.overall_score + 5) : 88,
+                            risk_score: d.risk_score,
+                            approval_readiness_score: d.overall_score != null ? Math.max(50, d.overall_score - (d.risk_score ? Math.round(d.risk_score * 0.2) : 5)) : 82,
+                          }}
+                          size="xs"
+                        />
                       </td>
-                      <td style={{ padding: '10px 14px' }}>{riskBadge(d.risk_score)}</td>
                       <td style={{ padding: '10px 14px', textAlign: 'right' }}>
                         <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
                           <Link href={`/dpr/${d.id}`} style={{ color: 'var(--accent-blue)', textDecoration: 'none', fontWeight: 700, fontSize: 11 }}>

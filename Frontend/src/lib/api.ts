@@ -29,6 +29,51 @@ export function getUserHeaders(): Record<string, string> {
   return headers;
 }
 
+export interface LoginResponse {
+  access_token: string;
+  token_type: string;
+  role?: string;
+  username?: string;
+  full_name?: string;
+  email?: string;
+  department?: string;
+  id?: number | string;
+}
+
+export async function loginUser(username: string, password: string): Promise<LoginResponse> {
+  const res = await fetch(`${API_BASE_URL}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: username.trim(), password }),
+  });
+  if (!res.ok) {
+    let msg = 'Invalid Login ID or password';
+    try {
+      const err = await res.json();
+      msg = err.detail || msg;
+    } catch (e) {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+export async function registerUser(data: { username: string; password: string; full_name: string; email: string; state?: string }): Promise<any> {
+  const res = await fetch(`${API_BASE_URL}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    let msg = 'Registration failed. Please try again.';
+    try {
+      const err = await res.json();
+      msg = err.detail || msg;
+    } catch (e) {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
 export interface TrendDataPoint { month: string; submitted: number; approved: number; rejected: number; }
 export interface DistrictDataPoint { district: string; total: number; approved: number; pending: number; rejected: number; }
 export interface SectorDataPoint { sector: string; count: number; }
@@ -305,6 +350,7 @@ export interface AppSettings {
   auto_assign: boolean;
   language: string;
   groq_api_key?: string;
+  theme?: 'light' | 'dark' | 'system';
 }
 
 export async function fetchSettings(): Promise<AppSettings> {
@@ -315,7 +361,7 @@ export async function fetchSettings(): Promise<AppSettings> {
   } catch (error) {
     console.error('Error fetching settings:', error);
     // Return safe defaults if backend is unreachable
-    return { risk_threshold: 70, email_alerts: true, auto_assign: true, language: 'en', groq_api_key: '' };
+    return { risk_threshold: 70, email_alerts: true, auto_assign: true, language: 'en', groq_api_key: '', theme: 'system' };
   }
 }
 
@@ -1012,7 +1058,7 @@ export interface ExplainableRecommendation {
   confidence_score: number;
   title: string;
   reason: string;
-  explanation: string;
+  explanation?: string;
   description?: string;
   dpr_page_numbers: number[];
   dpr_section_name: string;
@@ -1020,6 +1066,185 @@ export interface ExplainableRecommendation {
   guideline_reference: string;
   suggested_action: string;
   actionable_steps: string[];
+}
+
+export interface AiScoreExplanationItem {
+  score: number;
+  grade: string;
+  color: string;
+  weight_pct: number;
+  formula: string;
+  description: string;
+}
+
+export interface KeyFindings {
+  observations: string[];
+  strengths: string[];
+  weaknesses: string[];
+}
+
+export interface OpportunityItem {
+  title: string;
+  savings_amount?: string;
+  time_saved?: string;
+  benefit?: string;
+  impact: string;
+  description: string;
+  steps?: string;
+}
+
+export interface TopOpportunities {
+  cost_savings: OpportunityItem[];
+  timeline_improvements: OpportunityItem[];
+  resource_optimization: OpportunityItem[];
+  quality_improvements: OpportunityItem[];
+}
+
+export interface CriticalAlert {
+  type: string;
+  title: string;
+  severity?: string;
+  dpr_page?: number;
+  description?: string;
+  mandatory_action?: string;
+}
+
+export interface CriticalAlertsDict {
+  high_risk_issues: string[];
+  compliance_violations: string[];
+  missing_documents: string[];
+  incomplete_information: string[];
+}
+
+export interface SuggestionsInsights {
+  key_findings: KeyFindings;
+  top_opportunities: TopOpportunities;
+  critical_alerts: CriticalAlertsDict;
+}
+
+export interface RiskSuggestionItem {
+  risk_category: string;
+  title: string;
+  description: string;
+  impact_level: string;
+  probability_pct: number;
+  mitigation_strategy: string;
+  dpr_page_reference: number;
+  guideline_reference: string;
+}
+
+export interface ComplianceSuggestionItem {
+  guideline_code: string;
+  guideline_name: string;
+  requirement_description: string;
+  current_finding: string;
+  compliance_status: string;
+  severity: string;
+  corrective_action: string;
+  statutory_reference: string;
+}
+
+export interface CorrectionItem {
+  category: string;
+  description: string;
+  severity: string;
+  page_number: number;
+  resolution_steps: string;
+}
+
+export interface ImprovementSuggestions {
+  technical_improvements: Array<{ title: string; benefit: string; effort: string; recommendation: string }>;
+  budget_optimization: Array<{ title: string; cost_impact: string; feasibility: string; recommendation: string }>;
+  timeline_optimization: Array<{ title: string; time_saved: string; critical_path: string; recommendation: string }>;
+  resource_utilization: Array<{ title: string; efficiency_gain: string; recommendation: string }>;
+  sustainability_enhancements: Array<{ title: string; green_rating: string; recommendation: string }>;
+  documentation_improvements: Array<{ title: string; completeness_gain: string; recommendation: string }>;
+}
+
+export interface EvidenceReferenceItem {
+  dpr_page_number: number;
+  section_name: string;
+  supporting_evidence: string;
+  ocr_source_excerpt: string;
+  rag_retrieval_context: string;
+  guideline_reference: string;
+  suggested_action: string;
+}
+
+export interface SuggestionsAnalytics {
+  risk_distribution: Array<{ name: string; value: number; color: string }>;
+  compliance_breakdown: Array<{ name: string; score: number; target: number }>;
+  quality_radar: Array<{ subject: string; score: number; fullMark: number }>;
+  readiness_trends: Array<{ stage: string; readiness: number; target: number }>;
+  recommendation_categories: Array<{ category: string; count: number; color: string }>;
+}
+
+export interface ComprehensiveSuggestionsData {
+  dpr_id: string;
+  project_title: string;
+  sector: string;
+  district: string;
+  state: string;
+  estimated_cost_cr: number;
+  upload_date: string;
+  status: string;
+  total_pages: number;
+  total_recommendations: number;
+  critical_count: number;
+  high_count: number;
+  medium_count: number;
+  low_count: number;
+  scores: {
+    overall_ai_score: number;
+    dpr_quality_score: number;
+    compliance_score: number;
+    risk_score: number;
+    technical_score: number;
+    financial_score: number;
+    documentation_score: number;
+    approval_readiness_score: number;
+    confidence_score: number;
+    ocr_accuracy: number;
+    rag_confidence: number;
+    recommendation_score: number;
+    grade: string;
+    color: string;
+  };
+  score_explanations: Record<string, AiScoreExplanationItem>;
+  recommendations: ExplainableRecommendation[];
+  insights: SuggestionsInsights;
+  risk_suggestions: RiskSuggestionItem[];
+  compliance_suggestions: ComplianceSuggestionItem[];
+  corrections_required: CorrectionItem[];
+  improvement_suggestions: ImprovementSuggestions;
+  evidence_references: EvidenceReferenceItem[];
+  analytics: SuggestionsAnalytics;
+  generated_at: string;
+}
+
+export interface SuggestionsDashboardProject {
+  dpr_id: string;
+  title: string;
+  sector: string;
+  district: string;
+  status: string;
+  upload_date: string;
+  estimated_cost_cr: number;
+  scores: Record<string, any>;
+  total_recommendations: number;
+  critical_count: number;
+  high_count: number;
+  top_recommendations: ExplainableRecommendation[];
+  critical_alerts: CriticalAlert[];
+}
+
+export interface SuggestionsDashboardData {
+  total_projects: number;
+  total_recommendations: number;
+  total_critical: number;
+  total_high: number;
+  total_estimated_savings_cr: number;
+  projects: SuggestionsDashboardProject[];
 }
 
 export interface DprInsightsDashboard {
@@ -1061,6 +1286,32 @@ export async function fetchDprDeepRecommendations(dprId: string): Promise<DprDee
   }
 }
 
+export async function fetchComprehensiveSuggestions(dprId: string): Promise<ComprehensiveSuggestionsData | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/dpr/${dprId}/comprehensive-suggestions`, {
+      headers: getUserHeaders(),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.error('Error fetching comprehensive suggestions:', err);
+    return null;
+  }
+}
+
+export async function fetchSuggestionsDashboard(): Promise<SuggestionsDashboardData | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/suggestions/dashboard`, {
+      headers: getUserHeaders(),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.error('Error fetching suggestions dashboard:', err);
+    return null;
+  }
+}
+
 export interface DepartmentStage {
   stage_index: number;
   department_key: string;
@@ -1098,6 +1349,20 @@ export interface DprApprovalWorkflow {
   estimated_cost?: number;
   state?: string;
   upload_date?: string;
+  overall_ai_score?: number;
+  dpr_quality_score?: number;
+  compliance_score?: number;
+  risk_score?: number;
+  technical_score?: number;
+  financial_score?: number;
+  documentation_score?: number;
+  approval_readiness_score?: number;
+  confidence_score?: number;
+  ocr_accuracy?: number;
+  rag_confidence?: number;
+  recommendation_score?: number;
+  grade?: string;
+  color?: string;
 }
 
 export interface AiApprovalAssistantInsights {
@@ -1212,6 +1477,279 @@ export async function fetchDprCertificate(dprId: string): Promise<any | null> {
     return null;
   }
 }
+
+// ── Visual Representation & Analytics Interfaces ──
+export interface VisualKPIs {
+  total_dprs: number;
+  approved_dprs: number;
+  pending_dprs: number;
+  rejected_dprs: number;
+  under_review_dprs: number;
+  total_users: number;
+  active_users: number;
+  total_departments: number;
+  approval_rate_pct: number;
+  avg_approval_time_days: number;
+  high_risk_dprs: number;
+  medium_risk_dprs: number;
+  low_risk_dprs: number;
+  total_budget_cr: number;
+  approved_budget_cr: number;
+  rejected_budget_cr: number;
+  pending_budget_cr: number;
+}
+
+export interface VisualStatusDist {
+  name: string;
+  status: string;
+  count: number;
+  percentage: number;
+  color: string;
+}
+
+export interface DepartmentPerformanceItem {
+  department: string;
+  approved: number;
+  rejected: number;
+  pending: number;
+  total_reviews: number;
+  avg_review_time_days: number;
+  target_sla_days: number;
+  compliance_rate_pct: number;
+}
+
+export interface MonthlySubmissionPoint {
+  month: string;
+  full_month: string;
+  submitted: number;
+  approved: number;
+  rejected: number;
+  under_review: number;
+}
+
+export interface RiskHeatmapCell {
+  district: string;
+  category: string;
+  value: number;
+  risk_level: string;
+  color: string;
+}
+
+export interface RiskTopCategory {
+  category: string;
+  count: number;
+  avg_score: number;
+  severity: string;
+}
+
+export interface GuidelineStatItem {
+  guideline: string;
+  name: string;
+  compliance_rate_pct: number;
+  total_checked: number;
+  passed: number;
+  flagged: number;
+}
+
+export interface ApprovalBottleneckItem {
+  stage: string;
+  pending_count: number;
+  avg_wait_days: number;
+  severity: string;
+  sla_target: number;
+}
+
+export interface DelayedDprItem {
+  id: string;
+  title: string;
+  department: string;
+  days_pending: number;
+  delay_reason: string;
+  priority: string;
+}
+
+export interface UserSubmissionRank {
+  username: string;
+  name: string;
+  submitted: number;
+  approved: number;
+  rejected: number;
+}
+
+export interface BudgetDistributionItem {
+  category: string;
+  budget_cr: number;
+  percentage: number;
+}
+
+export interface CostRiskItem {
+  id: string;
+  title: string;
+  estimated_cost_cr: number;
+  variance_risk_pct: number;
+  risk_level: string;
+}
+
+export interface VisualDprItem {
+  id: string;
+  title: string;
+  district: string;
+  department: string;
+  submitted_by: string;
+  upload_date: string;
+  status: string;
+  overall_score?: number | null;
+  risk_score?: number | null;
+  compliance_score?: number | null;
+  estimated_cost?: number;
+  sector?: string;
+}
+
+export interface VisualRepresentationData {
+  kpis: VisualKPIs;
+  status_distribution: VisualStatusDist[];
+  department_performance: DepartmentPerformanceItem[];
+  monthly_submission_trend: MonthlySubmissionPoint[];
+  risk_analytics: {
+    distribution: { name: string; count: number; color: string }[];
+    top_categories: RiskTopCategory[];
+    heatmap: RiskHeatmapCell[];
+  };
+  compliance_analytics: {
+    score_distribution: { range: string; count: number; color: string }[];
+    guideline_statistics: GuidelineStatItem[];
+  };
+  approval_analytics: {
+    avg_approval_time_days: number;
+    bottlenecks: ApprovalBottleneckItem[];
+    delayed_dprs: DelayedDprItem[];
+    success_rate_pct: number;
+  };
+  user_analytics: {
+    dprs_per_user: UserSubmissionRank[];
+    department_users: { department: string; user_count: number }[];
+    active_users: number;
+    total_users: number;
+  };
+  financial_analytics: {
+    total_budget_cr: number;
+    approved_budget_cr: number;
+    rejected_budget_cr: number;
+    pending_budget_cr: number;
+    budget_distribution: BudgetDistributionItem[];
+    cost_risk_analysis: CostRiskItem[];
+  };
+  filters_meta: {
+    departments: string[];
+    districts: string[];
+    sectors: string[];
+  };
+  dprs: VisualDprItem[];
+}
+
+export async function fetchVisualRepresentationAnalytics(params?: {
+  date_range?: string;
+  department?: string;
+  district?: string;
+  status?: string;
+  search?: string;
+}): Promise<VisualRepresentationData | null> {
+  try {
+    const q = new URLSearchParams();
+    if (params?.date_range) q.set('date_range', params.date_range);
+    if (params?.department && params.department !== 'all') q.set('department', params.department);
+    if (params?.district && params.district !== 'all') q.set('district', params.district);
+    if (params?.status && params.status !== 'all') q.set('status', params.status);
+    if (params?.search) q.set('search', params.search);
+
+    const queryStr = q.toString() ? `?${q.toString()}` : '';
+    const res = await fetch(`${API_BASE_URL}/api/analytics/visual-representation${queryStr}`, {
+      headers: getUserHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to fetch visual representation analytics');
+    return await res.json();
+  } catch (err) {
+    console.error('Error fetching visual representation analytics:', err);
+    return null;
+  }
+}
+
+// ── Centralized AI Scores & Intelligence Types ──
+export interface ScoreDetail {
+  score: number;
+  grade: 'Excellent' | 'Good' | 'Moderate' | 'Critical';
+  color: string;
+  weight_pct: number;
+  formula: string;
+  description: string;
+}
+
+export interface PageReference {
+  page_number: number;
+  section_name: string;
+  finding_type: 'compliance' | 'risk' | 'technical' | 'financial' | 'quality';
+  text_excerpt: string;
+  impact_level: 'High' | 'Medium' | 'Low';
+}
+
+export interface DprAiScores {
+  dpr_id: string;
+  project_title: string;
+  sector: string;
+  status: string;
+  overall_ai_score: number;
+  dpr_quality_score: number;
+  compliance_score: number;
+  risk_score: number;
+  safety_score: number;
+  technical_score: number;
+  financial_score: number;
+  documentation_score: number;
+  approval_readiness_score: number;
+  confidence_score: number;
+  ocr_accuracy: number;
+  rag_confidence: number;
+  recommendation_score: number;
+  grade: string;
+  color: string;
+  explainability: Record<string, ScoreDetail>;
+  page_references: PageReference[];
+  historical_snapshots: {
+    stage: string;
+    overall_ai_score: number;
+    compliance_score: number;
+    risk_score: number;
+    timestamp: string;
+  }[];
+}
+
+export async function fetchDprAiScores(dprId: string): Promise<DprAiScores | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/dpr/${dprId}/ai-scores`, {
+      headers: getUserHeaders(),
+    });
+    if (!res.ok) throw new Error(`Failed to fetch AI scores for ${dprId}`);
+    return await res.json();
+  } catch (err) {
+    console.error('Error fetching DPR AI scores:', err);
+    return null;
+  }
+}
+
+export async function fetchDprScoresExplainability(dprId: string): Promise<any | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/dpr/${dprId}/scores-explainability`, {
+      headers: getUserHeaders(),
+    });
+    if (!res.ok) throw new Error(`Failed to fetch scores explainability for ${dprId}`);
+    return await res.json();
+  } catch (err) {
+    console.error('Error fetching scores explainability:', err);
+    return null;
+  }
+}
+
+
 
 
 

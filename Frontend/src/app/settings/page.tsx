@@ -3,10 +3,12 @@
 'use client';
 import { Topbar } from '@/components/layout/Topbar';
 import { useState, useEffect } from 'react';
-import { Save, Brain, RefreshCw, Database, Bell, Globe, Loader, Key, Eye, EyeOff, Sparkles, ExternalLink } from 'lucide-react';
+import { Save, Brain, RefreshCw, Database, Bell, Globe, Loader, Key, Eye, EyeOff, Sparkles, ExternalLink, Sun, Moon, Monitor, Palette } from 'lucide-react';
 import { fetchSettings, saveSettings } from '@/lib/api';
+import { useTheme, Theme } from '@/lib/ThemeContext';
 
 export default function SettingsPage() {
+  const { theme, setTheme, resolvedTheme } = useTheme();
   const [loading, setLoading]       = useState(true);
   const [saving, setSaving]         = useState(false);
   const [saved, setSaved]           = useState(false);
@@ -27,6 +29,9 @@ export default function SettingsPage() {
       setAutoAssign(s.auto_assign);
       setLang(s.language);
       setGroqApiKey(s.groq_api_key || '');
+      if (s.theme) {
+        setTheme(s.theme);
+      }
     }).finally(() => setLoading(false));
   }, []);
 
@@ -41,6 +46,7 @@ export default function SettingsPage() {
         auto_assign:    autoAssign,
         language:       lang,
         groq_api_key:   groqApiKey.trim(),
+        theme:          theme,
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
@@ -65,12 +71,12 @@ export default function SettingsPage() {
 
   return (
     <>
-      <Topbar title="Settings" subtitle="Configure portal behaviour, ML thresholds, and notifications" />
+      <Topbar title="Settings" subtitle="Configure portal appearance, ML thresholds, and notifications" />
       <div className="page-content fade-in" style={{ maxWidth: 820 }}>
 
         {saved && (
           <div className="info-box green" style={{ marginBottom: 16 }}>
-            ✓ Settings saved successfully and will persist across restarts.
+            ✓ Settings and theme preferences saved successfully and will persist across restarts.
           </div>
         )}
         {error && (
@@ -78,6 +84,118 @@ export default function SettingsPage() {
             ✕ {error}
           </div>
         )}
+
+        {/* ── Appearance & Theme Configuration ── */}
+        <div className="card" style={{ marginBottom: 18 }}>
+          <div className="card-header">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Palette size={16} color="var(--accent-blue)" />
+                <div>
+                  <div className="card-title">Appearance &amp; Theme Mode</div>
+                  <div className="card-subtitle">Choose between Light, Dark, or System themes across all modules</div>
+                </div>
+              </div>
+              <span style={{
+                fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
+                background: 'var(--accent-blue-glow)', color: 'var(--accent-blue)',
+                border: '1px solid var(--accent-blue)', display: 'flex', alignItems: 'center', gap: 5
+              }}>
+                Active: {resolvedTheme === 'dark' ? '🌙 Dark Mode' : '☀️ Light Mode'}
+              </span>
+            </div>
+          </div>
+          <div className="card-body">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
+              {/* Light Mode Card */}
+              <div
+                onClick={() => setTheme('light')}
+                style={{
+                  padding: 16, borderRadius: 'var(--radius-md)', cursor: 'pointer',
+                  border: `2px solid ${theme === 'light' ? 'var(--accent-blue)' : 'var(--border)'}`,
+                  background: theme === 'light' ? 'var(--accent-blue-glow)' : 'var(--bg-card)',
+                  boxShadow: theme === 'light' ? '0 0 12px rgba(37, 99, 235, 0.2)' : 'none',
+                  transition: 'all 0.2s ease', position: 'relative'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 8, background: 'rgba(245, 158, 11, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Sun size={18} color="#f59e0b" />
+                  </div>
+                  {theme === 'light' && (
+                    <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--accent-blue)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      Selected
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
+                  ☀️ Light Mode
+                </div>
+                <div style={{ fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                  Clean government standard appearance with high contrast, bright cards, and crisp slate typography.
+                </div>
+              </div>
+
+              {/* Dark Mode Card */}
+              <div
+                onClick={() => setTheme('dark')}
+                style={{
+                  padding: 16, borderRadius: 'var(--radius-md)', cursor: 'pointer',
+                  border: `2px solid ${theme === 'dark' ? 'var(--accent-blue)' : 'var(--border)'}`,
+                  background: theme === 'dark' ? 'var(--accent-blue-glow)' : 'var(--bg-card)',
+                  boxShadow: theme === 'dark' ? '0 0 12px rgba(59, 130, 246, 0.25)' : 'none',
+                  transition: 'all 0.2s ease', position: 'relative'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 8, background: 'rgba(59, 130, 246, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Moon size={18} color="#3b82f6" />
+                  </div>
+                  {theme === 'dark' && (
+                    <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--accent-blue)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      Selected
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
+                  🌙 Dark Mode
+                </div>
+                <div style={{ fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                  Deep slate &amp; navy surfaces designed for low light environments, reduced eye strain, and high contrast.
+                </div>
+              </div>
+
+              {/* System Theme Card */}
+              <div
+                onClick={() => setTheme('system')}
+                style={{
+                  padding: 16, borderRadius: 'var(--radius-md)', cursor: 'pointer',
+                  border: `2px solid ${theme === 'system' ? 'var(--accent-blue)' : 'var(--border)'}`,
+                  background: theme === 'system' ? 'var(--accent-blue-glow)' : 'var(--bg-card)',
+                  boxShadow: theme === 'system' ? '0 0 12px rgba(147, 51, 234, 0.2)' : 'none',
+                  transition: 'all 0.2s ease', position: 'relative'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 8, background: 'rgba(147, 51, 234, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Monitor size={18} color="var(--accent-purple)" />
+                  </div>
+                  {theme === 'system' && (
+                    <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--accent-blue)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      Selected
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
+                  💻 System Sync
+                </div>
+                <div style={{ fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                  Automatically synchronizes with your device&apos;s OS preference (Dark or Light) in real time.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* ML Model Settings */}
         <div className="card" style={{ marginBottom: 18 }}>

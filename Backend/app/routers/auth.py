@@ -53,10 +53,31 @@ async def login(request: LoginRequest):
             detail="Invalid username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    if user.disabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is disabled. Please contact administrator.",
+        )
     access_token = create_access_token(
-        data={"sub": user.username, "role": user.role}
+        data={
+            "sub": user.username,
+            "role": user.role,
+            "id": user.id,
+            "email": user.email,
+            "department": user.department,
+            "full_name": user.full_name
+        }
     )
-    return Token(access_token=access_token, token_type="bearer")
+    return Token(
+        access_token=access_token,
+        token_type="bearer",
+        role=user.role,
+        username=user.username,
+        full_name=user.full_name,
+        email=user.email,
+        department=user.department,
+        id=user.id
+    )
 
 
 @router.post("/token", response_model=Token)
@@ -69,10 +90,31 @@ async def login_form(form_data: OAuth2PasswordRequestForm = Depends()):
             detail="Invalid username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    if user.disabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is disabled. Please contact administrator.",
+        )
     access_token = create_access_token(
-        data={"sub": user.username, "role": user.role}
+        data={
+            "sub": user.username,
+            "role": user.role,
+            "id": user.id,
+            "email": user.email,
+            "department": user.department,
+            "full_name": user.full_name
+        }
     )
-    return Token(access_token=access_token, token_type="bearer")
+    return Token(
+        access_token=access_token,
+        token_type="bearer",
+        role=user.role,
+        username=user.username,
+        full_name=user.full_name,
+        email=user.email,
+        department=user.department,
+        id=user.id
+    )
 
 
 @router.post("/register", response_model=UserResponse)

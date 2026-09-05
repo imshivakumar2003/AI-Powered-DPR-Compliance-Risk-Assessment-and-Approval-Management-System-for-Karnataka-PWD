@@ -47,6 +47,7 @@ def get_all_application_statuses(request: Request, username: Optional[str] = Non
     """Return list of all DPRs with application-status summary."""
     from main import _extract_request_user
     from app.services.project_service import can_user_access_project, get_all_projects
+    from app.services.ai_scores_service import compute_centralized_dpr_scores
     u, r, uid = _extract_request_user(request, username, role)
     projects = get_all_projects(username=u, role=r, user_id=uid)
     result = []
@@ -56,6 +57,16 @@ def get_all_application_statuses(request: Request, username: Optional[str] = Non
         steps = ["Uploaded", "AI Analysis", "Under Review", "Pending Info", "Decision"]
         step_idx = _status_step(p.status)
         progress_pct = round((step_idx + 1) / len(steps) * 100)
+
+        ai_scores = compute_centralized_dpr_scores(p.id, {
+            "title": p.title,
+            "original_filename": p.original_filename,
+            "sector": p.sector,
+            "status": p.status,
+            "overall_score": p.overall_score,
+            "risk_score": p.risk_score,
+            "compliance_score": p.compliance_score,
+        })
 
         result.append({
             "id": p.id,
@@ -70,9 +81,21 @@ def get_all_application_statuses(request: Request, username: Optional[str] = Non
             "reviewed_by": p.reviewed_by,
             "reviewer_name": p.reviewer_name,
             "reviewed_at": p.reviewed_at,
-            "overall_score": p.overall_score,
-            "risk_score": p.risk_score,
-            "compliance_score": p.compliance_score,
+            "overall_score": ai_scores.dpr_quality_score,
+            "overall_ai_score": ai_scores.overall_ai_score,
+            "dpr_quality_score": ai_scores.dpr_quality_score,
+            "compliance_score": ai_scores.compliance_score,
+            "risk_score": ai_scores.risk_score,
+            "technical_score": ai_scores.technical_score,
+            "financial_score": ai_scores.financial_score,
+            "documentation_score": ai_scores.documentation_score,
+            "approval_readiness_score": ai_scores.approval_readiness_score,
+            "confidence_score": ai_scores.confidence_score,
+            "ocr_accuracy": ai_scores.ocr_accuracy,
+            "rag_confidence": ai_scores.rag_confidence,
+            "recommendation_score": ai_scores.recommendation_score,
+            "grade": ai_scores.grade,
+            "color": ai_scores.color,
             "estimated_cost": p.estimated_cost,
             "duration_months": p.duration_months,
             "approval_comment": p.approval_comment,
@@ -111,6 +134,17 @@ def get_application_status_detail(project_id: str, request: Request, username: O
                            "AI Engine", "system")
         timeline = get_timeline(project_id)
 
+    from app.services.ai_scores_service import compute_centralized_dpr_scores
+    ai_scores = compute_centralized_dpr_scores(project_id, {
+        "title": p.title,
+        "original_filename": p.original_filename,
+        "sector": p.sector,
+        "status": p.status,
+        "overall_score": p.overall_score,
+        "risk_score": p.risk_score,
+        "compliance_score": p.compliance_score,
+    })
+
     return {
         "id": p.id,
         "title": p.title or p.original_filename,
@@ -124,9 +158,21 @@ def get_application_status_detail(project_id: str, request: Request, username: O
         "reviewed_by": p.reviewed_by,
         "reviewer_name": p.reviewer_name,
         "reviewed_at": p.reviewed_at,
-        "overall_score": p.overall_score,
-        "risk_score": p.risk_score,
-        "compliance_score": p.compliance_score,
+        "overall_score": ai_scores.dpr_quality_score,
+        "overall_ai_score": ai_scores.overall_ai_score,
+        "dpr_quality_score": ai_scores.dpr_quality_score,
+        "compliance_score": ai_scores.compliance_score,
+        "risk_score": ai_scores.risk_score,
+        "technical_score": ai_scores.technical_score,
+        "financial_score": ai_scores.financial_score,
+        "documentation_score": ai_scores.documentation_score,
+        "approval_readiness_score": ai_scores.approval_readiness_score,
+        "confidence_score": ai_scores.confidence_score,
+        "ocr_accuracy": ai_scores.ocr_accuracy,
+        "rag_confidence": ai_scores.rag_confidence,
+        "recommendation_score": ai_scores.recommendation_score,
+        "grade": ai_scores.grade,
+        "color": ai_scores.color,
         "estimated_cost": p.estimated_cost,
         "duration_months": p.duration_months,
         "approval_comment": p.approval_comment,

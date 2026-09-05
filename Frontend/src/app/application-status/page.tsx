@@ -10,8 +10,9 @@ import Link from 'next/link';
 import {
   ClipboardCheck, Search, Filter, RefreshCw, Clock, CheckCircle2,
   XCircle, FileText, Eye, AlertTriangle, Building2, User,
-  Calendar, Layers, CheckSquare, ChevronRight, Globe, Download
+  Calendar, Layers, CheckSquare, ChevronRight, Globe, Download, Sparkles
 } from 'lucide-react';
+import { AiScoreBadge, DprScoreStrip } from '@/components/common/AiScoreBadges';
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -58,6 +59,21 @@ interface AppStatus {
   estimated_cost: number;
   duration_months: number;
   department_tracking: DepartmentTrackItem[];
+  overall_score?: number;
+  overall_ai_score?: number;
+  dpr_quality_score?: number;
+  compliance_score?: number;
+  risk_score?: number;
+  technical_score?: number;
+  financial_score?: number;
+  documentation_score?: number;
+  approval_readiness_score?: number;
+  confidence_score?: number;
+  ocr_accuracy?: number;
+  rag_confidence?: number;
+  recommendation_score?: number;
+  grade?: string;
+  color?: string;
 }
 
 const UI_TEXT: Record<string, Record<string, string>> = {
@@ -404,6 +420,20 @@ export default function ApplicationStatusPage() {
                       <div style={{ fontSize: 11, color: 'var(--accent-blue)', marginTop: 2 }}>
                         {app.current_department}
                       </div>
+                    </div>
+                  </div>
+
+                  {/* ── AI ANALYSIS SCORES ── */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, padding: '8px 12px', background: 'rgba(59, 130, 246, 0.08)', borderRadius: 6, border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Sparkles size={14} color="#3b82f6" />
+                      <span style={{ fontSize: 11.5, fontWeight: 700, color: '#fff' }}>AI Analysis Scores:</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <AiScoreBadge score={app.dpr_quality_score ?? app.overall_score} label="DPR Quality" size="xs" />
+                      <AiScoreBadge score={app.compliance_score} label="Compliance" size="xs" />
+                      <AiScoreBadge score={app.risk_score} label="Risk" size="xs" isRisk={true} />
+                      <AiScoreBadge score={app.approval_readiness_score} label="Approval Readiness" size="xs" />
                     </div>
                   </div>
 

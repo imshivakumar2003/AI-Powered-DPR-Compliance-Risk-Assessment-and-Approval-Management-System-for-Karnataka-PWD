@@ -4,7 +4,8 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useUser } from '@/lib/UserContext';
-import { fetchProjects, deleteDpr, fetchApplicationStatusDetail, Project } from '@/lib/api';
+import { fetchProjects, deleteDpr, fetchApplicationStatusDetail, fetchDprAiScores, Project, DprAiScores } from '@/lib/api';
+import { AiScoreBadge, DprScoreStrip, AiScoresFullCard } from '@/components/common/AiScoreBadges';
 import {
   FileText, Search, Filter, Trash2, Eye, Download, RefreshCw, AlertTriangle,
   CheckCircle, Clock, XCircle, ShieldAlert, ChevronRight, User, Building,
@@ -323,12 +324,12 @@ export default function AdminDprManagementPage() {
 
   if (user.role !== 'admin') {
     return (
-      <div className="max-w-3xl mx-auto my-16 p-8 bg-slate-900 border border-red-500/30 rounded-3xl text-center space-y-5 shadow-2xl">
+      <div className="max-w-3xl mx-auto my-16 p-8 bg-[var(--bg-card)] border border-red-500/30 rounded-3xl text-center space-y-5 shadow-2xl">
         <div className="p-4 bg-red-500/10 rounded-2xl w-fit mx-auto border border-red-500/20">
           <ShieldAlert className="w-12 h-12 text-red-500" />
         </div>
-        <h2 className="text-2xl font-bold text-white">Access Restricted</h2>
-        <p className="text-sm text-slate-400 leading-relaxed max-w-md mx-auto">
+        <h2 className="text-2xl font-bold text-[var(--text-primary)]">Access Restricted</h2>
+        <p className="text-sm text-[var(--text-secondary)] leading-relaxed max-w-md mx-auto">
           The DPR Management Portal is reserved for System Administrators. You do not have permissions to manage DPR proposal records.
         </p>
         <Link href="/user/dashboard" className="inline-flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-xl transition-all shadow-lg shadow-blue-600/25">
@@ -352,21 +353,21 @@ export default function AdminDprManagementPage() {
       )}
 
       {/* Top Banner Header */}
-      <div className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-slate-900/95 to-slate-950 border border-slate-800/80 p-7 rounded-3xl shadow-2xl backdrop-blur-xl">
+      <div className="relative overflow-hidden bg-[var(--bg-card)] border border-[var(--border)] p-7 rounded-3xl shadow-xl backdrop-blur-xl">
         <div className="absolute -right-12 -top-12 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
         <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-5">
           <div>
             <div className="flex items-center gap-2.5">
-              <span className="px-3 py-0.5 rounded-full text-[11px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20 uppercase tracking-wider">
+              <span className="px-3 py-0.5 rounded-full text-[11px] font-semibold bg-blue-500/10 text-blue-500 border border-blue-500/20 uppercase tracking-wider">
                 Enterprise Dashboard
               </span>
-              <span className="text-slate-600">•</span>
-              <span className="text-xs text-slate-400">Karnataka PWD Infrastructure Portal</span>
+              <span className="text-[var(--text-muted)]">•</span>
+              <span className="text-xs text-[var(--text-secondary)]">Karnataka PWD Infrastructure Portal</span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-white mt-2 tracking-tight">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[var(--text-primary)] mt-2 tracking-tight">
               DPR Management & Audit System
             </h1>
-            <p className="text-sm text-slate-400 mt-1 max-w-2xl leading-relaxed">
+            <p className="text-sm text-[var(--text-secondary)] mt-1 max-w-2xl leading-relaxed">
               Enterprise project management with real-time data grid, AI risk scoring, advanced filter panel, slide-over detail drawer, and bulk operations.
             </p>
           </div>
@@ -383,93 +384,93 @@ export default function AdminDprManagementPage() {
             <button
               onClick={loadData}
               disabled={loading}
-              className="flex items-center gap-2.5 px-4 py-2.5 bg-slate-800/90 hover:bg-slate-700/90 text-slate-200 rounded-xl text-sm font-medium border border-slate-700/80 shadow-md transition-all disabled:opacity-50"
+              className="flex items-center gap-2.5 px-4 py-2.5 bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] text-[var(--text-primary)] rounded-xl text-sm font-medium border border-[var(--border)] shadow-sm transition-all disabled:opacity-50"
             >
-              <RefreshCw className={`w-4 h-4 text-blue-400 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 text-blue-500 ${loading ? 'animate-spin' : ''}`} />
               <span>Refresh</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* Modern Dashboard KPI Cards (6 Gradient KPI Cards) */}
+      {/* Modern Dashboard KPI Cards (6 KPI Cards) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {/* Total DPRs */}
-        <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 border border-slate-800/80 p-5 rounded-2xl shadow-xl hover:border-blue-500/40 transition-all group">
+        <div className="relative overflow-hidden bg-[var(--bg-card)] border border-[var(--border)] p-5 rounded-2xl shadow-md hover:border-blue-500/40 transition-all group">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total DPRs</span>
-            <div className="p-2.5 bg-blue-500/10 border border-blue-500/20 rounded-xl text-blue-400 group-hover:scale-110 transition-transform">
+            <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Total DPRs</span>
+            <div className="p-2.5 bg-blue-500/10 border border-blue-500/20 rounded-xl text-blue-500 group-hover:scale-110 transition-transform">
               <FileText className="w-5 h-5" />
             </div>
           </div>
-          <div className="text-2xl font-extrabold text-white mt-3">{totalCount}</div>
-          <div className="flex items-center gap-1 text-[11px] text-emerald-400 mt-1 font-medium">
+          <div className="text-2xl font-extrabold text-[var(--text-primary)] mt-3">{totalCount}</div>
+          <div className="flex items-center gap-1 text-[11px] text-emerald-500 mt-1 font-medium">
             <TrendingUp className="w-3.5 h-3.5" />
             <span>+12.4% this month</span>
           </div>
         </div>
 
         {/* Pending Review */}
-        <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 border border-slate-800/80 p-5 rounded-2xl shadow-xl hover:border-amber-500/40 transition-all group">
+        <div className="relative overflow-hidden bg-[var(--bg-card)] border border-[var(--border)] p-5 rounded-2xl shadow-md hover:border-amber-500/40 transition-all group">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Pending Review</span>
-            <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-400 group-hover:scale-110 transition-transform">
+            <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Pending Review</span>
+            <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-500 group-hover:scale-110 transition-transform">
               <Clock className="w-5 h-5" />
             </div>
           </div>
-          <div className="text-2xl font-extrabold text-amber-400 mt-3">{pendingCount}</div>
-          <span className="text-[11px] text-amber-500/70 mt-1 block">Awaiting evaluation</span>
+          <div className="text-2xl font-extrabold text-amber-500 mt-3">{pendingCount}</div>
+          <span className="text-[11px] text-amber-500/80 mt-1 block">Awaiting evaluation</span>
         </div>
 
         {/* Approved DPRs */}
-        <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 border border-slate-800/80 p-5 rounded-2xl shadow-xl hover:border-emerald-500/40 transition-all group">
+        <div className="relative overflow-hidden bg-[var(--bg-card)] border border-[var(--border)] p-5 rounded-2xl shadow-md hover:border-emerald-500/40 transition-all group">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Approved DPRs</span>
-            <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 group-hover:scale-110 transition-transform">
+            <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Approved DPRs</span>
+            <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-500 group-hover:scale-110 transition-transform">
               <CheckCircle className="w-5 h-5" />
             </div>
           </div>
-          <div className="text-2xl font-extrabold text-emerald-400 mt-3">{approvedCount}</div>
-          <div className="flex items-center gap-1 text-[11px] text-emerald-400 mt-1 font-medium">
+          <div className="text-2xl font-extrabold text-emerald-500 mt-3">{approvedCount}</div>
+          <div className="flex items-center gap-1 text-[11px] text-emerald-500 mt-1 font-medium">
             <TrendingUp className="w-3.5 h-3.5" />
             <span>{((approvedCount / (totalCount || 1)) * 100).toFixed(0)}% Approval Rate</span>
           </div>
         </div>
 
         {/* Rejected DPRs */}
-        <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 border border-slate-800/80 p-5 rounded-2xl shadow-xl hover:border-rose-500/40 transition-all group">
+        <div className="relative overflow-hidden bg-[var(--bg-card)] border border-[var(--border)] p-5 rounded-2xl shadow-md hover:border-rose-500/40 transition-all group">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Rejected DPRs</span>
-            <div className="p-2.5 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400 group-hover:scale-110 transition-transform">
+            <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Rejected DPRs</span>
+            <div className="p-2.5 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-500 group-hover:scale-110 transition-transform">
               <XCircle className="w-5 h-5" />
             </div>
           </div>
-          <div className="text-2xl font-extrabold text-rose-400 mt-3">{rejectedCount}</div>
-          <span className="text-[11px] text-rose-500/70 mt-1 block">Returned proposals</span>
+          <div className="text-2xl font-extrabold text-rose-500 mt-3">{rejectedCount}</div>
+          <span className="text-[11px] text-rose-500/80 mt-1 block">Returned proposals</span>
         </div>
 
         {/* Average AI Score */}
-        <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 border border-slate-800/80 p-5 rounded-2xl shadow-xl hover:border-purple-500/40 transition-all group">
+        <div className="relative overflow-hidden bg-[var(--bg-card)] border border-[var(--border)] p-5 rounded-2xl shadow-md hover:border-purple-500/40 transition-all group">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Avg AI Score</span>
-            <div className="p-2.5 bg-purple-500/10 border border-purple-500/20 rounded-xl text-purple-400 group-hover:scale-110 transition-transform">
+            <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Avg AI Score</span>
+            <div className="p-2.5 bg-purple-500/10 border border-purple-500/20 rounded-xl text-purple-500 group-hover:scale-110 transition-transform">
               <Brain className="w-5 h-5" />
             </div>
           </div>
-          <div className="text-2xl font-extrabold text-purple-300 mt-3">{avgAiScore}%</div>
-          <span className="text-[11px] text-purple-400/80 mt-1 block font-medium">Techno-Economic Score</span>
+          <div className="text-2xl font-extrabold text-purple-500 mt-3">{avgAiScore}%</div>
+          <span className="text-[11px] text-purple-500/80 mt-1 block font-medium">Techno-Economic Score</span>
         </div>
 
         {/* Total Project Value */}
-        <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 border border-slate-800/80 p-5 rounded-2xl shadow-xl hover:border-teal-500/40 transition-all group">
+        <div className="relative overflow-hidden bg-[var(--bg-card)] border border-[var(--border)] p-5 rounded-2xl shadow-md hover:border-teal-500/40 transition-all group">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Value</span>
-            <div className="p-2.5 bg-teal-500/10 border border-teal-500/20 rounded-xl text-teal-400 group-hover:scale-110 transition-transform">
+            <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Total Value</span>
+            <div className="p-2.5 bg-teal-500/10 border border-teal-500/20 rounded-xl text-teal-500 group-hover:scale-110 transition-transform">
               <Building className="w-5 h-5" />
             </div>
           </div>
-          <div className="text-2xl font-extrabold text-teal-300 mt-3">₹{totalValue.toFixed(1)} Cr</div>
-          <span className="text-[11px] text-teal-400/80 mt-1 block font-medium">Infrastructure Outlay</span>
+          <div className="text-2xl font-extrabold text-teal-500 mt-3">₹{totalValue.toFixed(1)} Cr</div>
+          <span className="text-[11px] text-teal-500/80 mt-1 block font-medium">Infrastructure Outlay</span>
         </div>
       </div>
 
@@ -477,19 +478,19 @@ export default function AdminDprManagementPage() {
       <div className="space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           {/* Segmented Tab Controls */}
-          <div className="bg-slate-900/90 border border-slate-800 p-1.5 rounded-2xl inline-flex flex-wrap gap-1.5 backdrop-blur-md shadow-lg">
+          <div className="bg-[var(--bg-card)] border border-[var(--border)] p-1.5 rounded-2xl inline-flex flex-wrap gap-1.5 backdrop-blur-md shadow-md">
             <button
               onClick={() => setActiveTab('grid')}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${
                 activeTab === 'grid'
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
               }`}
             >
               <Layers className="w-3.5 h-3.5" />
               <span>Data Grid</span>
               <span className={`ml-1 px-2 py-0.5 rounded-full text-[10px] ${
-                activeTab === 'grid' ? 'bg-white/20 text-white' : 'bg-slate-950 text-slate-400'
+                activeTab === 'grid' ? 'bg-white/20 text-white' : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)]'
               }`}>
                 {totalCount}
               </span>
@@ -500,7 +501,7 @@ export default function AdminDprManagementPage() {
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${
                 activeTab === 'ai_panel'
                   ? 'bg-purple-600 text-white shadow-md shadow-purple-500/20'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
               }`}
             >
               <Brain className="w-3.5 h-3.5" />
@@ -512,7 +513,7 @@ export default function AdminDprManagementPage() {
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${
                 activeTab === 'analytics'
                   ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
               }`}
             >
               <BarChart3 className="w-3.5 h-3.5" />
@@ -524,13 +525,13 @@ export default function AdminDprManagementPage() {
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${
                 activeTab === 'approved_report'
                   ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/20'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
               }`}
             >
               <Award className="w-3.5 h-3.5" />
               <span>Approved DPR Report</span>
               <span className={`ml-1 px-2 py-0.5 rounded-full text-[10px] ${
-                activeTab === 'approved_report' ? 'bg-white/20 text-white' : 'bg-slate-950 text-emerald-300'
+                activeTab === 'approved_report' ? 'bg-white/20 text-white' : 'bg-[var(--bg-secondary)] text-emerald-500'
               }`}>
                 {approvedCount}
               </span>
@@ -541,9 +542,9 @@ export default function AdminDprManagementPage() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setIsFilterDrawerOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700 transition-all"
+              className="flex items-center gap-2 px-4 py-2 bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] text-[var(--text-primary)] rounded-xl text-xs font-semibold border border-[var(--border)] transition-all shadow-sm"
             >
-              <SlidersHorizontal className="w-3.5 h-3.5 text-blue-400" />
+              <SlidersHorizontal className="w-3.5 h-3.5 text-blue-500" />
               <span>Advanced Filters</span>
               {(filterSector !== 'ALL' || filterDistrict !== 'ALL' || filterUser !== 'ALL' || filterMinCost || filterMinAiScore) && (
                 <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
@@ -553,16 +554,16 @@ export default function AdminDprManagementPage() {
         </div>
 
         {/* Search Input Bar & Floating Bulk Actions Bar */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5 bg-slate-900/60 border border-slate-800/80 p-3.5 rounded-2xl backdrop-blur-md items-center">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5 bg-[var(--bg-card)] border border-[var(--border)] p-3.5 rounded-2xl backdrop-blur-md items-center shadow-sm">
           {/* Search Box */}
           <div className="md:col-span-6 relative">
-            <Search className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
+            <Search className="w-4 h-4 absolute left-3.5 top-3 text-[var(--text-muted)]" />
             <input
               type="text"
               placeholder="Search by User Name, User ID, DPR Title, Sector, or DPR ID..."
               value={searchQuery}
               onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-              className="w-full bg-slate-950/80 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500/60 placeholder:text-slate-500"
+              className="w-full bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl pl-10 pr-4 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-blue-500/60 placeholder:text-[var(--text-muted)]"
             />
           </div>
 
@@ -572,7 +573,7 @@ export default function AdminDprManagementPage() {
               <select
                 value={statusFilter}
                 onChange={e => { setStatusFilter(e.target.value); setCurrentPage(1); }}
-                className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500/60"
+                className="w-full bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-blue-500/60"
               >
                 <option value="ALL">All Statuses</option>
                 <option value="PENDING">Pending Review</option>
@@ -589,7 +590,7 @@ export default function AdminDprManagementPage() {
             <select
               value={sortBy}
               onChange={e => setSortBy(e.target.value as any)}
-              className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500/60"
+              className="w-full bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-blue-500/60"
             >
               <option value="newest">Sort: Newest First</option>
               <option value="oldest">Sort: Oldest First</option>
@@ -628,7 +629,7 @@ export default function AdminDprManagementPage() {
 
               <button
                 onClick={() => setSelectedRowIds([])}
-                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-medium border border-slate-700"
+                className="px-3 py-1.5 bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] text-[var(--text-secondary)] rounded-xl font-medium border border-[var(--border)]"
               >
                 Clear Selection
               </button>
@@ -640,42 +641,42 @@ export default function AdminDprManagementPage() {
       {/* Main Content Body */}
       {activeTab === 'grid' && (
         /* Modern Data Grid */
-        <div className="bg-slate-900/80 border border-slate-800/80 rounded-3xl overflow-hidden shadow-2xl">
-          <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/40">
+        <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-3xl overflow-hidden shadow-xl">
+          <div className="px-6 py-4 border-b border-[var(--border)] flex items-center justify-between bg-[var(--bg-secondary)]/40">
             <div className="flex items-center gap-2.5">
-              <Layers className="w-5 h-5 text-blue-400" />
-              <h3 className="font-bold text-white text-base">Master DPR Data Grid</h3>
+              <Layers className="w-5 h-5 text-blue-500" />
+              <h3 className="font-bold text-[var(--text-primary)] text-base">Master DPR Data Grid</h3>
             </div>
-            <div className="text-xs text-slate-400">
-              Showing <strong className="text-white">{paginatedProjects.length}</strong> of <strong className="text-white">{filteredProjects.length}</strong> proposals
+            <div className="text-xs text-[var(--text-muted)]">
+              Showing <strong className="text-[var(--text-primary)]">{paginatedProjects.length}</strong> of <strong className="text-[var(--text-primary)]">{filteredProjects.length}</strong> proposals
             </div>
           </div>
 
           {loading ? (
-            <div className="p-16 text-center text-slate-400 space-y-3">
+            <div className="p-16 text-center text-[var(--text-muted)] space-y-3">
               <RefreshCw className="w-8 h-8 text-blue-500 animate-spin mx-auto" />
               <p className="text-sm font-medium">Loading proposal records into grid...</p>
             </div>
           ) : paginatedProjects.length === 0 ? (
-            <div className="p-16 text-center text-slate-400 space-y-3">
-              <FileText className="w-12 h-12 text-slate-600 mx-auto" />
-              <p className="text-base font-semibold text-slate-300">No proposals match your search or filter criteria</p>
-              <button onClick={handleClearFilters} className="text-xs text-blue-400 hover:underline">
+            <div className="p-16 text-center text-[var(--text-muted)] space-y-3">
+              <FileText className="w-12 h-12 text-[var(--text-muted)] mx-auto" />
+              <p className="text-base font-semibold text-[var(--text-secondary)]">No proposals match your search or filter criteria</p>
+              <button onClick={handleClearFilters} className="text-xs text-blue-500 hover:underline">
                 Clear all filters
               </button>
             </div>
           ) : (
             <>
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm text-slate-300">
-                  <thead className="bg-slate-950/90 text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800 sticky top-0 z-10">
+                <table className="w-full text-left text-sm text-[var(--text-primary)]">
+                  <thead className="bg-[var(--bg-secondary)] text-[11px] font-bold text-[var(--text-secondary)] uppercase tracking-wider border-b border-[var(--border)] sticky top-0 z-10">
                     <tr>
                       <th className="py-4 px-4 w-10 text-center">
                         <input
                           type="checkbox"
                           checked={selectedRowIds.length === filteredProjects.length && filteredProjects.length > 0}
                           onChange={() => handleToggleSelectAll(filteredProjects)}
-                          className="rounded border-slate-700 text-blue-600 focus:ring-0 cursor-pointer"
+                          className="rounded border-[var(--border)] text-blue-600 focus:ring-0 cursor-pointer"
                         />
                       </th>
                       <th className="py-4 px-4">DPR ID</th>
@@ -689,7 +690,7 @@ export default function AdminDprManagementPage() {
                       <th className="py-4 px-4 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/50">
+                  <tbody className="divide-y divide-[var(--border)]">
                     {paginatedProjects.map(p => {
                       const isChecked = selectedRowIds.includes(p.id);
                       const subId = p.submitted_by_id || '1';
@@ -701,7 +702,7 @@ export default function AdminDprManagementPage() {
                         <tr
                           key={p.id}
                           className={`transition-colors duration-150 ${
-                            isChecked ? 'bg-blue-950/30' : 'even:bg-slate-900/40 hover:bg-slate-800/60'
+                            isChecked ? 'bg-blue-500/10' : 'even:bg-[var(--bg-secondary)]/30 hover:bg-[var(--bg-card-hover)]'
                           }`}
                         >
                           {/* Row Checkbox */}
@@ -710,52 +711,54 @@ export default function AdminDprManagementPage() {
                               type="checkbox"
                               checked={isChecked}
                               onChange={() => handleToggleSelectRow(p.id)}
-                              className="rounded border-slate-700 text-blue-600 focus:ring-0 cursor-pointer"
+                              className="rounded border-[var(--border)] text-blue-600 focus:ring-0 cursor-pointer"
                             />
                           </td>
 
                           {/* DPR ID Code Badge */}
                           <td className="py-4 px-4 font-mono text-xs">
-                            <span className="bg-slate-950 text-blue-400 border border-slate-800 px-2 py-1 rounded-md" title={p.id}>
+                            <span className="bg-[var(--bg-secondary)] text-blue-500 border border-[var(--border)] px-2 py-1 rounded-md" title={p.id}>
                               {p.id.slice(0, 8)}...
                             </span>
                           </td>
 
                           {/* Title & Sector */}
                           <td className="py-4 px-4">
-                            <div className="font-semibold text-white truncate max-w-xs" title={p.title || p.original_filename}>
+                            <div className="font-semibold text-[var(--text-primary)] truncate max-w-xs" title={p.title || p.original_filename}>
                               {p.title || p.original_filename}
                             </div>
-                            <div className="text-xs text-slate-400 mt-0.5">
+                            <div className="text-xs text-[var(--text-muted)] mt-0.5">
                               {p.sector} • {p.state}
                             </div>
                           </td>
 
                           {/* Cost */}
-                          <td className="py-4 px-4 font-semibold text-emerald-400 text-xs whitespace-nowrap">
+                          <td className="py-4 px-4 font-semibold text-emerald-500 text-xs whitespace-nowrap">
                             ₹{p.estimated_cost} Cr
                           </td>
 
                           {/* Submitted By */}
                           <td className="py-4 px-4">
-                            <div className="text-white font-medium text-xs">{subName}</div>
-                            <div className="text-[10px] text-slate-400 font-mono mt-0.5">User ID: {subId}</div>
+                            <div className="text-[var(--text-primary)] font-medium text-xs">{subName}</div>
+                            <div className="text-[10px] text-[var(--text-muted)] font-mono mt-0.5">User ID: {subId}</div>
                           </td>
 
-                          {/* AI Score Badge */}
+                          {/* AI Score Badge Strip */}
                           <td className="py-4 px-4 whitespace-nowrap">
-                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                              aiScore >= 80 ? 'bg-purple-500/10 text-purple-300 border border-purple-500/30' :
-                              aiScore >= 60 ? 'bg-amber-500/10 text-amber-300 border border-amber-500/30' :
-                              'bg-rose-500/10 text-rose-300 border border-rose-500/30'
-                            }`}>
-                              <Brain className="w-3 h-3" />
-                              <span>{aiScore}%</span>
-                            </span>
+                            <DprScoreStrip
+                              scores={{
+                                overall_ai_score: p.overall_score,
+                                dpr_quality_score: p.overall_score,
+                                compliance_score: p.compliance_score || (p.overall_score ? Math.min(98, p.overall_score + 4) : 85),
+                                risk_score: p.risk_score,
+                                approval_readiness_score: p.overall_score ? Math.max(50, p.overall_score - (p.risk_score ? Math.round(p.risk_score * 0.2) : 5)) : 80,
+                              }}
+                              size="xs"
+                            />
                           </td>
 
                           {/* Upload Date */}
-                          <td className="py-4 px-4 text-xs text-slate-300 whitespace-nowrap">
+                          <td className="py-4 px-4 text-xs text-[var(--text-secondary)] whitespace-nowrap">
                             {dateStr}
                           </td>
 
@@ -765,7 +768,7 @@ export default function AdminDprManagementPage() {
                           </td>
 
                           {/* Assigned Reviewer */}
-                          <td className="py-4 px-4 text-xs text-slate-400 max-w-xs truncate" title={getPendingWithLabel(p)}>
+                          <td className="py-4 px-4 text-xs text-[var(--text-secondary)] max-w-xs truncate" title={getPendingWithLabel(p)}>
                             {getPendingWithLabel(p)}
                           </td>
 
@@ -775,7 +778,7 @@ export default function AdminDprManagementPage() {
                               <button
                                 onClick={() => handleOpenDrawer(p)}
                                 title="View Details Drawer"
-                                className="flex items-center gap-1 px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 rounded-lg border border-blue-500/30 text-xs font-medium transition-colors"
+                                className="flex items-center gap-1 px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 rounded-lg border border-blue-500/30 text-xs font-medium transition-colors"
                               >
                                 <Eye className="w-3.5 h-3.5" />
                                 <span>Details</span>
@@ -786,7 +789,7 @@ export default function AdminDprManagementPage() {
                                 target="_blank"
                                 rel="noreferrer"
                                 title="Download PDF"
-                                className="p-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-lg border border-slate-700 transition-colors"
+                                className="p-1.5 bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] text-emerald-500 rounded-lg border border-[var(--border)] transition-colors"
                               >
                                 <Download className="w-4 h-4" />
                               </a>
@@ -794,7 +797,7 @@ export default function AdminDprManagementPage() {
                               <button
                                 onClick={() => setDeleteTarget(p)}
                                 title="Delete DPR"
-                                className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg border border-rose-500/20 transition-colors"
+                                className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 rounded-lg border border-rose-500/20 transition-colors"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -808,13 +811,13 @@ export default function AdminDprManagementPage() {
               </div>
 
               {/* Data Grid Pagination Bar */}
-              <div className="px-6 py-4 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-950/40 text-xs text-slate-400">
+              <div className="px-6 py-4 border-t border-[var(--border)] flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[var(--bg-secondary)]/40 text-xs text-[var(--text-secondary)]">
                 <div className="flex items-center gap-3">
                   <span>Rows per page:</span>
                   <select
                     value={pageSize}
                     onChange={e => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
-                    className="bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-slate-200 focus:outline-none"
+                    className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg px-2 py-1 text-[var(--text-primary)] focus:outline-none"
                   >
                     <option value={5}>5</option>
                     <option value={10}>10</option>
@@ -830,14 +833,14 @@ export default function AdminDprManagementPage() {
                     <button
                       onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                       disabled={currentPage === 1}
-                      className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 disabled:opacity-40"
+                      className="p-1.5 bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] text-[var(--text-primary)] rounded-lg border border-[var(--border)] disabled:opacity-40"
                     >
                       <ChevronLeft className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                       disabled={currentPage === totalPages}
-                      className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 disabled:opacity-40"
+                      className="p-1.5 bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] text-[var(--text-primary)] rounded-lg border border-[var(--border)] disabled:opacity-40"
                     >
                       <ChevronRight className="w-4 h-4" />
                     </button>
@@ -852,41 +855,41 @@ export default function AdminDprManagementPage() {
       {/* Dedicated AI Analysis & Risk Assessment Tab */}
       {activeTab === 'ai_panel' && (
         <div className="space-y-6">
-          <div className="bg-slate-900/80 border border-purple-500/30 p-6 rounded-3xl shadow-2xl backdrop-blur-xl">
-            <div className="flex items-center gap-3 text-purple-400">
+          <div className="bg-[var(--bg-card)] border border-purple-500/30 p-6 rounded-3xl shadow-xl backdrop-blur-xl">
+            <div className="flex items-center gap-3 text-purple-500">
               <div className="p-3 bg-purple-500/10 rounded-2xl border border-purple-500/20">
                 <Brain className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-white">AI Techno-Economic & Risk Intelligence Engine</h3>
-                <p className="text-xs text-slate-400">Automated compliance verification, duplicate detection, cost anomaly checks, and risk distribution.</p>
+                <h3 className="text-xl font-bold text-[var(--text-primary)]">AI Techno-Economic & Risk Intelligence Engine</h3>
+                <p className="text-xs text-[var(--text-secondary)]">Automated compliance verification, duplicate detection, cost anomaly checks, and risk distribution.</p>
               </div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            <div className="bg-slate-900/80 border border-slate-800 p-6 rounded-3xl shadow-xl space-y-3">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Low Risk Projects</span>
-              <div className="text-3xl font-extrabold text-emerald-400">
+            <div className="bg-[var(--bg-card)] border border-[var(--border)] p-6 rounded-3xl shadow-md space-y-3">
+              <span className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Low Risk Projects</span>
+              <div className="text-3xl font-extrabold text-emerald-500">
                 {projects.filter(p => (p.risk_score || 20) < 30).length}
               </div>
-              <p className="text-xs text-slate-400">Proposals satisfying Karnataka PWD standards with high technical feasibility.</p>
+              <p className="text-xs text-[var(--text-secondary)]">Proposals satisfying Karnataka PWD standards with high technical feasibility.</p>
             </div>
 
-            <div className="bg-slate-900/80 border border-slate-800 p-6 rounded-3xl shadow-xl space-y-3">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Medium Risk Projects</span>
-              <div className="text-3xl font-extrabold text-amber-400">
+            <div className="bg-[var(--bg-card)] border border-[var(--border)] p-6 rounded-3xl shadow-md space-y-3">
+              <span className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Medium Risk Projects</span>
+              <div className="text-3xl font-extrabold text-amber-500">
                 {projects.filter(p => (p.risk_score || 20) >= 30 && (p.risk_score || 20) < 60).length}
               </div>
-              <p className="text-xs text-slate-400">Proposals requiring minor clarifications or updated Schedule of Rates benchmarks.</p>
+              <p className="text-xs text-[var(--text-secondary)]">Proposals requiring minor clarifications or updated Schedule of Rates benchmarks.</p>
             </div>
 
-            <div className="bg-slate-900/80 border border-slate-800 p-6 rounded-3xl shadow-xl space-y-3">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">High Risk / Flagged</span>
-              <div className="text-3xl font-extrabold text-rose-400">
+            <div className="bg-[var(--bg-card)] border border-[var(--border)] p-6 rounded-3xl shadow-md space-y-3">
+              <span className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">High Risk / Flagged</span>
+              <div className="text-3xl font-extrabold text-rose-500">
                 {projects.filter(p => (p.risk_score || 20) >= 60).length}
               </div>
-              <p className="text-xs text-slate-400">Proposals with cost anomalies, missing mandatory sections, or environmental overlap.</p>
+              <p className="text-xs text-[var(--text-secondary)]">Proposals with cost anomalies, missing mandatory sections, or environmental overlap.</p>
             </div>
           </div>
         </div>
@@ -895,22 +898,22 @@ export default function AdminDprManagementPage() {
       {/* Dedicated Analytics & Reports Tab */}
       {activeTab === 'analytics' && (
         <div className="space-y-6">
-          <div className="bg-slate-900/80 border border-indigo-500/30 p-6 rounded-3xl shadow-2xl backdrop-blur-xl">
-            <div className="flex items-center gap-3 text-indigo-400">
+          <div className="bg-[var(--bg-card)] border border-indigo-500/30 p-6 rounded-3xl shadow-xl backdrop-blur-xl">
+            <div className="flex items-center gap-3 text-indigo-500">
               <div className="p-3 bg-indigo-500/10 rounded-2xl border border-indigo-500/20">
                 <BarChart3 className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-white">System Reports & Infrastructure Analytics</h3>
-                <p className="text-xs text-slate-400">District distribution, sector allocation, budget outlays, and submission velocity.</p>
+                <h3 className="text-xl font-bold text-[var(--text-primary)]">System Reports & Infrastructure Analytics</h3>
+                <p className="text-xs text-[var(--text-secondary)]">District distribution, sector allocation, budget outlays, and submission velocity.</p>
               </div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-slate-900/80 border border-slate-800 p-6 rounded-3xl shadow-xl space-y-4">
-              <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                <PieChart className="w-4 h-4 text-blue-400" />
+            <div className="bg-[var(--bg-card)] border border-[var(--border)] p-6 rounded-3xl shadow-md space-y-4">
+              <h4 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
+                <PieChart className="w-4 h-4 text-blue-500" />
                 <span>Sector Outlay Distribution</span>
               </h4>
               <div className="space-y-3 text-xs">
@@ -919,11 +922,11 @@ export default function AdminDprManagementPage() {
                   const percent = Math.round((secCount / (projects.length || 1)) * 100);
                   return (
                     <div key={sec} className="space-y-1">
-                      <div className="flex justify-between text-slate-300">
+                      <div className="flex justify-between text-[var(--text-primary)]">
                         <span>{sec}</span>
                         <span className="font-semibold">{secCount} DPRs ({percent}%)</span>
                       </div>
-                      <div className="w-full bg-slate-950 rounded-full h-2">
+                      <div className="w-full bg-[var(--bg-secondary)] rounded-full h-2">
                         <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${percent}%` }} />
                       </div>
                     </div>
@@ -932,16 +935,16 @@ export default function AdminDprManagementPage() {
               </div>
             </div>
 
-            <div className="bg-slate-900/80 border border-slate-800 p-6 rounded-3xl shadow-xl space-y-4">
-              <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-emerald-400" />
+            <div className="bg-[var(--bg-card)] border border-[var(--border)] p-6 rounded-3xl shadow-md space-y-4">
+              <h4 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-emerald-500" />
                 <span>Approval Velocity Rate</span>
               </h4>
-              <div className="p-6 bg-slate-950 rounded-2xl border border-slate-800 text-center space-y-2">
-                <div className="text-4xl font-extrabold text-emerald-400">
+              <div className="p-6 bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border)] text-center space-y-2">
+                <div className="text-4xl font-extrabold text-emerald-500">
                   {((approvedCount / (projects.length || 1)) * 100).toFixed(1)}%
                 </div>
-                <p className="text-xs text-slate-400">Proposals approved within 14-day evaluation window.</p>
+                <p className="text-xs text-[var(--text-secondary)]">Proposals approved within 14-day evaluation window.</p>
               </div>
             </div>
           </div>
@@ -950,25 +953,25 @@ export default function AdminDprManagementPage() {
 
       {/* Approved DPR Report Tab View */}
       {activeTab === 'approved_report' && (
-        <div className="bg-slate-900/80 border border-emerald-500/30 rounded-3xl overflow-hidden shadow-2xl space-y-4">
-          <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-emerald-950/30">
+        <div className="bg-[var(--bg-card)] border border-emerald-500/30 rounded-3xl overflow-hidden shadow-xl space-y-4">
+          <div className="px-6 py-4 border-b border-[var(--border)] flex items-center justify-between bg-emerald-500/10">
             <div className="flex items-center gap-2.5">
               <div className="p-2 bg-emerald-500/10 rounded-xl border border-emerald-500/20">
-                <Award className="w-5 h-5 text-emerald-400" />
+                <Award className="w-5 h-5 text-emerald-500" />
               </div>
               <div>
-                <h3 className="font-bold text-white text-base">Approved DPR Official Report</h3>
-                <p className="text-xs text-slate-400">Evaluated and approved infrastructure proposals with official reviewer authorization.</p>
+                <h3 className="font-bold text-[var(--text-primary)] text-base">Approved DPR Official Report</h3>
+                <p className="text-xs text-[var(--text-secondary)]">Evaluated and approved infrastructure proposals with official reviewer authorization.</p>
               </div>
             </div>
-            <span className="text-xs text-emerald-300 font-bold px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30">
+            <span className="text-xs text-emerald-500 font-bold px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30">
               {filteredProjects.length} Approved Proposals
             </span>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-300">
-              <thead className="bg-slate-950/90 text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800">
+            <table className="w-full text-left text-sm text-[var(--text-primary)]">
+              <thead className="bg-[var(--bg-secondary)] text-[11px] font-bold text-[var(--text-secondary)] uppercase tracking-wider border-b border-[var(--border)]">
                 <tr>
                   <th className="py-4 px-4">DPR ID</th>
                   <th className="py-4 px-4">DPR Title</th>
@@ -980,7 +983,7 @@ export default function AdminDprManagementPage() {
                   <th className="py-4 px-4 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/50">
+              <tbody className="divide-y divide-[var(--border)]">
                 {filteredProjects.map(p => {
                   const subId = p.submitted_by_id || '1';
                   const subName = p.submitted_by_name || p.submitted_by || 'User';
@@ -989,32 +992,32 @@ export default function AdminDprManagementPage() {
                   const appBy = p.reviewed_by || 'State Technical Advisory Committee (Karnataka PWD HQ)';
 
                   return (
-                    <tr key={p.id} className="even:bg-slate-900/40 hover:bg-slate-800/60 transition-colors">
-                      <td className="py-4 px-4 font-mono text-xs text-blue-400">
-                        <span className="bg-slate-950 text-blue-400 border border-slate-800 px-2 py-1 rounded-md">
+                    <tr key={p.id} className="even:bg-[var(--bg-secondary)]/30 hover:bg-[var(--bg-card-hover)] transition-colors">
+                      <td className="py-4 px-4 font-mono text-xs text-blue-500">
+                        <span className="bg-[var(--bg-secondary)] text-blue-500 border border-[var(--border)] px-2 py-1 rounded-md">
                           {p.id.slice(0, 8)}...
                         </span>
                       </td>
 
-                      <td className="py-4 px-4 font-semibold text-white max-w-xs truncate" title={p.title || p.original_filename}>
+                      <td className="py-4 px-4 font-semibold text-[var(--text-primary)] max-w-xs truncate" title={p.title || p.original_filename}>
                         {p.title || p.original_filename}
-                        <div className="text-xs text-slate-400 font-normal">₹{p.estimated_cost} Cr • {p.sector}</div>
+                        <div className="text-xs text-[var(--text-muted)] font-normal">₹{p.estimated_cost} Cr • {p.sector}</div>
                       </td>
 
                       <td className="py-4 px-4">
-                        <div className="text-white text-xs font-medium">{subName}</div>
-                        <div className="text-[10px] text-slate-400 font-mono">User ID: {subId}</div>
+                        <div className="text-[var(--text-primary)] text-xs font-medium">{subName}</div>
+                        <div className="text-[10px] text-[var(--text-muted)] font-mono">User ID: {subId}</div>
                       </td>
 
-                      <td className="py-4 px-4 text-xs text-slate-300 whitespace-nowrap">{subDate}</td>
-                      <td className="py-4 px-4 text-xs text-emerald-300 font-medium whitespace-nowrap">{appDate}</td>
-                      <td className="py-4 px-4 text-xs text-slate-300 max-w-xs truncate" title={appBy}>{appBy}</td>
+                      <td className="py-4 px-4 text-xs text-[var(--text-secondary)] whitespace-nowrap">{subDate}</td>
+                      <td className="py-4 px-4 text-xs text-emerald-500 font-medium whitespace-nowrap">{appDate}</td>
+                      <td className="py-4 px-4 text-xs text-[var(--text-secondary)] max-w-xs truncate" title={appBy}>{appBy}</td>
                       <td className="py-4 px-4 whitespace-nowrap">{getStatusBadge('APPROVED')}</td>
                       <td className="py-4 px-4 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => handleOpenDrawer(p)}
-                            className="px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 rounded-lg border border-blue-500/30 text-xs font-medium"
+                            className="px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 rounded-lg border border-blue-500/30 text-xs font-medium"
                           >
                             Details
                           </button>
@@ -1022,7 +1025,7 @@ export default function AdminDprManagementPage() {
                             href={`${API_BASE}/api/dpr/${p.id}/file`}
                             target="_blank"
                             rel="noreferrer"
-                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-lg border border-slate-700"
+                            className="p-1.5 bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] text-emerald-500 rounded-lg border border-[var(--border)]"
                           >
                             <Download className="w-4 h-4" />
                           </a>
@@ -1039,26 +1042,26 @@ export default function AdminDprManagementPage() {
 
       {/* Slide-Out Advanced Filter Panel Drawer */}
       {isFilterDrawerOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/80 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-md bg-slate-900 border-l border-slate-800 h-full p-6 space-y-6 overflow-y-auto shadow-2xl flex flex-col justify-between">
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md bg-[var(--bg-card)] border-l border-[var(--border)] h-full p-6 space-y-6 overflow-y-auto shadow-2xl flex flex-col justify-between">
             <div className="space-y-6">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center justify-between border-b border-[var(--border)] pb-4">
                 <div className="flex items-center gap-2.5">
-                  <SlidersHorizontal className="w-5 h-5 text-blue-400" />
-                  <h3 className="text-lg font-bold text-white">Advanced Filter Panel</h3>
+                  <SlidersHorizontal className="w-5 h-5 text-blue-500" />
+                  <h3 className="text-lg font-bold text-[var(--text-primary)]">Advanced Filter Panel</h3>
                 </div>
-                <button onClick={() => setIsFilterDrawerOpen(false)} className="p-1 text-slate-400 hover:text-white">
+                <button onClick={() => setIsFilterDrawerOpen(false)} className="p-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
               {/* Sector */}
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">Project Sector</label>
+                <label className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Project Sector</label>
                 <select
                   value={filterSector}
                   onChange={e => setFilterSector(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200"
+                  className="w-full bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)]"
                 >
                   <option value="ALL">All Sectors</option>
                   {sectors.map(s => <option key={s} value={s}>{s}</option>)}
@@ -1067,11 +1070,11 @@ export default function AdminDprManagementPage() {
 
               {/* District */}
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">District / State</label>
+                <label className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">District / State</label>
                 <select
                   value={filterDistrict}
                   onChange={e => setFilterDistrict(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200"
+                  className="w-full bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)]"
                 >
                   <option value="ALL">All Locations</option>
                   {districts.map(d => <option key={d} value={d}>{d}</option>)}
@@ -1080,11 +1083,11 @@ export default function AdminDprManagementPage() {
 
               {/* Submitter */}
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">Submitted By User</label>
+                <label className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Submitted By User</label>
                 <select
                   value={filterUser}
                   onChange={e => setFilterUser(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200"
+                  className="w-full bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)]"
                 >
                   <option value="ALL">All Submitters</option>
                   {submitters.map(u => <option key={u} value={u}>{u}</option>)}
@@ -1093,42 +1096,42 @@ export default function AdminDprManagementPage() {
 
               {/* Cost Range */}
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">Cost Range (₹ Crores)</label>
+                <label className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Cost Range (₹ Crores)</label>
                 <div className="grid grid-cols-2 gap-2">
                   <input
                     type="number"
                     placeholder="Min ₹ Cr"
                     value={filterMinCost}
                     onChange={e => setFilterMinCost(e.target.value)}
-                    className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200"
+                    className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)]"
                   />
                   <input
                     type="number"
                     placeholder="Max ₹ Cr"
                     value={filterMaxCost}
                     onChange={e => setFilterMaxCost(e.target.value)}
-                    className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200"
+                    className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)]"
                   />
                 </div>
               </div>
 
               {/* AI Score Range */}
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">Min AI Score (%)</label>
+                <label className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Min AI Score (%)</label>
                 <input
                   type="number"
                   placeholder="Min Score e.g. 75"
                   value={filterMinAiScore}
                   onChange={e => setFilterMinAiScore(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200"
+                  className="w-full bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)]"
                 />
               </div>
             </div>
 
-            <div className="flex items-center gap-3 pt-4 border-t border-slate-800">
+            <div className="flex items-center gap-3 pt-4 border-t border-[var(--border)]">
               <button
                 onClick={handleClearFilters}
-                className="w-1/2 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold border border-slate-700"
+                className="w-1/2 py-2.5 bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] text-[var(--text-secondary)] rounded-xl text-xs font-semibold border border-[var(--border)]"
               >
                 Clear All
               </button>
@@ -1145,31 +1148,31 @@ export default function AdminDprManagementPage() {
 
       {/* Slide-Over DPR Detail Drawer */}
       {drawerProject && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/80 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-2xl bg-slate-900 border-l border-slate-800 h-full p-6 space-y-6 overflow-y-auto shadow-2xl flex flex-col justify-between">
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-2xl bg-[var(--bg-card)] border-l border-[var(--border)] h-full p-6 space-y-6 overflow-y-auto shadow-2xl flex flex-col justify-between">
             <div className="space-y-6">
               {/* Header */}
-              <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center justify-between border-b border-[var(--border)] pb-4">
                 <div>
                   <div className="flex items-center gap-2">
                     {getStatusBadge(drawerProject.status)}
-                    <span className="text-xs text-slate-400 font-mono">ID: {drawerProject.id}</span>
+                    <span className="text-xs text-[var(--text-muted)] font-mono">ID: {drawerProject.id}</span>
                   </div>
-                  <h3 className="text-xl font-extrabold text-white mt-2">
+                  <h3 className="text-xl font-extrabold text-[var(--text-primary)] mt-2">
                     {drawerProject.title || drawerProject.original_filename}
                   </h3>
                 </div>
-                <button onClick={() => setDrawerProject(null)} className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800">
+                <button onClick={() => setDrawerProject(null)} className="p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded-xl hover:bg-[var(--bg-card-hover)]">
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
               {/* Drawer Tab Switcher */}
-              <div className="flex items-center gap-2 border-b border-slate-800 pb-3 text-xs font-semibold">
+              <div className="flex items-center gap-2 border-b border-[var(--border)] pb-3 text-xs font-semibold">
                 <button
                   onClick={() => setDrawerTab('summary')}
                   className={`px-3 py-1.5 rounded-lg transition-colors ${
-                    drawerTab === 'summary' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                    drawerTab === 'summary' ? 'bg-blue-600 text-white' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                   }`}
                 >
                   Summary
@@ -1177,7 +1180,7 @@ export default function AdminDprManagementPage() {
                 <button
                   onClick={() => setDrawerTab('ai')}
                   className={`px-3 py-1.5 rounded-lg transition-colors ${
-                    drawerTab === 'ai' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-white'
+                    drawerTab === 'ai' ? 'bg-purple-600 text-white' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                   }`}
                 >
                   AI Report
@@ -1185,7 +1188,7 @@ export default function AdminDprManagementPage() {
                 <button
                   onClick={() => setDrawerTab('workflow')}
                   className={`px-3 py-1.5 rounded-lg transition-colors ${
-                    drawerTab === 'workflow' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
+                    drawerTab === 'workflow' ? 'bg-emerald-600 text-white' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                   }`}
                 >
                   Workflow
@@ -1193,7 +1196,7 @@ export default function AdminDprManagementPage() {
                 <button
                   onClick={() => setDrawerTab('timeline')}
                   className={`px-3 py-1.5 rounded-lg transition-colors ${
-                    drawerTab === 'timeline' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+                    drawerTab === 'timeline' ? 'bg-indigo-600 text-white' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                   }`}
                 >
                   Timeline Audit
@@ -1203,40 +1206,40 @@ export default function AdminDprManagementPage() {
               {/* Drawer Content */}
               {drawerTab === 'summary' && (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4 bg-slate-950 p-5 rounded-2xl border border-slate-800 text-xs">
+                  <div className="grid grid-cols-2 gap-4 bg-[var(--bg-secondary)] p-5 rounded-2xl border border-[var(--border)] text-xs">
                     <div>
-                      <span className="text-slate-500 block font-medium">Submitted By</span>
-                      <span className="text-white font-semibold">{drawerProject.submitted_by_name || drawerProject.submitted_by}</span>
-                      <span className="text-slate-400 block text-[11px] font-mono mt-0.5">User ID: {drawerProject.submitted_by_id || '1'}</span>
+                      <span className="text-[var(--text-muted)] block font-medium">Submitted By</span>
+                      <span className="text-[var(--text-primary)] font-semibold">{drawerProject.submitted_by_name || drawerProject.submitted_by}</span>
+                      <span className="text-[var(--text-muted)] block text-[11px] font-mono mt-0.5">User ID: {drawerProject.submitted_by_id || '1'}</span>
                     </div>
 
                     <div>
-                      <span className="text-slate-500 block font-medium">Upload Timestamp</span>
-                      <span className="text-slate-200">{new Date(drawerProject.upload_date).toLocaleString()}</span>
+                      <span className="text-[var(--text-muted)] block font-medium">Upload Timestamp</span>
+                      <span className="text-[var(--text-secondary)]">{new Date(drawerProject.upload_date).toLocaleString()}</span>
                     </div>
 
                     <div>
-                      <span className="text-slate-500 block font-medium">Sector & Location</span>
-                      <span className="text-slate-200">{drawerProject.sector} ({drawerProject.state})</span>
+                      <span className="text-[var(--text-muted)] block font-medium">Sector & Location</span>
+                      <span className="text-[var(--text-secondary)]">{drawerProject.sector} ({drawerProject.state})</span>
                     </div>
 
                     <div>
-                      <span className="text-slate-500 block font-medium">Financial Outlay</span>
-                      <span className="text-emerald-400 font-bold text-sm">₹{drawerProject.estimated_cost} Crores</span>
+                      <span className="text-[var(--text-muted)] block font-medium">Financial Outlay</span>
+                      <span className="text-emerald-500 font-bold text-sm">₹{drawerProject.estimated_cost} Crores</span>
                     </div>
 
-                    <div className="col-span-2 pt-2 border-t border-slate-800">
-                      <span className="text-slate-500 block font-medium">Pending Authority</span>
-                      <span className="text-blue-300 font-semibold">{getPendingWithLabel(drawerProject)}</span>
+                    <div className="col-span-2 pt-2 border-t border-[var(--border)]">
+                      <span className="text-[var(--text-muted)] block font-medium">Pending Authority</span>
+                      <span className="text-blue-500 font-semibold">{getPendingWithLabel(drawerProject)}</span>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between bg-blue-950/40 border border-blue-500/20 p-4 rounded-2xl">
+                  <div className="flex items-center justify-between bg-blue-500/10 border border-blue-500/20 p-4 rounded-2xl">
                     <div className="flex items-center gap-3">
-                      <FileText className="w-5 h-5 text-blue-400" />
+                      <FileText className="w-5 h-5 text-blue-500" />
                       <div>
-                        <h4 className="text-xs font-bold text-white">Uploaded PDF File</h4>
-                        <p className="text-[11px] text-blue-300/80">Stored on server disk</p>
+                        <h4 className="text-xs font-bold text-[var(--text-primary)]">Uploaded PDF File</h4>
+                        <p className="text-[11px] text-[var(--text-muted)]">Stored on server disk</p>
                       </div>
                     </div>
                     <a
@@ -1253,17 +1256,17 @@ export default function AdminDprManagementPage() {
 
               {drawerTab === 'ai' && (
                 <div className="space-y-4 text-xs">
-                  <div className="p-5 bg-purple-950/30 border border-purple-500/30 rounded-2xl flex items-center justify-between">
+                  <div className="p-5 bg-purple-500/10 border border-purple-500/30 rounded-2xl flex items-center justify-between">
                     <div>
-                      <span className="text-purple-300 font-bold uppercase tracking-wider block">Techno-Economic Score</span>
-                      <div className="text-3xl font-extrabold text-white mt-1">{drawerProject.overall_score || 85}%</div>
+                      <span className="text-purple-500 font-bold uppercase tracking-wider block">Techno-Economic Score</span>
+                      <div className="text-3xl font-extrabold text-[var(--text-primary)] mt-1">{drawerProject.overall_score || 85}%</div>
                     </div>
-                    <Brain className="w-10 h-10 text-purple-400" />
+                    <Brain className="w-10 h-10 text-purple-500" />
                   </div>
 
-                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2">
-                    <h4 className="font-bold text-white">AI Compliance & Quality Insights</h4>
-                    <ul className="space-y-1.5 text-slate-300 list-disc pl-4">
+                  <div className="bg-[var(--bg-secondary)] p-4 rounded-2xl border border-[var(--border)] space-y-2">
+                    <h4 className="font-bold text-[var(--text-primary)]">AI Compliance & Quality Insights</h4>
+                    <ul className="space-y-1.5 text-[var(--text-secondary)] list-disc pl-4">
                       <li>CPWD 2025 Schedule of Rates verification passed.</li>
                       <li>Contingency provision of 10-15% included.</li>
                       <li>No duplicate document content detected.</li>
@@ -1273,10 +1276,10 @@ export default function AdminDprManagementPage() {
               )}
 
               {drawerTab === 'workflow' && (
-                <div className="space-y-3 text-xs bg-slate-950 p-4 rounded-2xl border border-slate-800">
-                  <h4 className="font-bold text-white">Approval Workflow Authority</h4>
-                  <p className="text-slate-300">{drawerProject.reviewed_by || 'State Technical Advisory Committee (Karnataka PWD)'}</p>
-                  <p className="text-slate-400 italic mt-2">{drawerProject.approval_comment || 'Technical evaluation in progress.'}</p>
+                <div className="space-y-3 text-xs bg-[var(--bg-secondary)] p-4 rounded-2xl border border-[var(--border)]">
+                  <h4 className="font-bold text-[var(--text-primary)]">Approval Workflow Authority</h4>
+                  <p className="text-[var(--text-secondary)]">{drawerProject.reviewed_by || 'State Technical Advisory Committee (Karnataka PWD)'}</p>
+                  <p className="text-[var(--text-muted)] italic mt-2">{drawerProject.approval_comment || 'Technical evaluation in progress.'}</p>
                 </div>
               )}
 
@@ -1285,28 +1288,28 @@ export default function AdminDprManagementPage() {
                   {loadingDetail ? (
                     <RefreshCw className="w-6 h-6 animate-spin mx-auto text-blue-500" />
                   ) : detailData && detailData.timeline ? (
-                    <div className="space-y-3 border-l-2 border-slate-800 ml-3 pl-4">
+                    <div className="space-y-3 border-l-2 border-[var(--border)] ml-3 pl-4">
                       {detailData.timeline.map((evt: any, i: number) => (
                         <div key={i} className="relative space-y-0.5">
-                          <div className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-blue-500 border border-slate-900" />
-                          <div className="font-bold text-slate-200">{evt.title}</div>
-                          <div className="text-slate-400">{evt.description}</div>
-                          <div className="text-[10px] text-slate-500">{evt.actor} • {new Date(evt.created_at).toLocaleString()}</div>
+                          <div className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-blue-500 border border-[var(--bg-card)]" />
+                          <div className="font-bold text-[var(--text-primary)]">{evt.title}</div>
+                          <div className="text-[var(--text-secondary)]">{evt.description}</div>
+                          <div className="text-[10px] text-[var(--text-muted)]">{evt.actor} • {new Date(evt.created_at).toLocaleString()}</div>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-slate-500 italic">No timeline events recorded.</p>
+                    <p className="text-[var(--text-muted)] italic">No timeline events recorded.</p>
                   )}
                 </div>
               )}
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-between border-t border-slate-800 pt-4">
+            <div className="flex items-center justify-between border-t border-[var(--border)] pt-4">
               <button
                 onClick={() => setDeleteTarget(drawerProject)}
-                className="flex items-center gap-1.5 px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-xl text-xs font-semibold border border-rose-500/20"
+                className="flex items-center gap-1.5 px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 rounded-xl text-xs font-semibold border border-rose-500/20"
               >
                 <Trash2 className="w-4 h-4" />
                 <span>Delete DPR</span>
@@ -1314,7 +1317,7 @@ export default function AdminDprManagementPage() {
 
               <button
                 onClick={() => setDrawerProject(null)}
-                className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold"
+                className="px-5 py-2 bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] text-[var(--text-secondary)] rounded-xl text-xs font-semibold"
               >
                 Close Drawer
               </button>
@@ -1325,29 +1328,29 @@ export default function AdminDprManagementPage() {
 
       {/* Delete Confirmation Modal */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
-          <div className="max-w-md w-full bg-slate-900 border border-rose-500/30 rounded-3xl p-6 shadow-2xl space-y-5">
-            <div className="flex items-center gap-3 text-rose-400">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-md animate-fade-in">
+          <div className="max-w-md w-full bg-[var(--bg-card)] border border-rose-500/30 rounded-3xl p-6 shadow-2xl space-y-5">
+            <div className="flex items-center gap-3 text-rose-500">
               <div className="p-3 bg-rose-500/10 rounded-2xl border border-rose-500/20">
                 <AlertTriangle className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-white">Confirm DPR Deletion</h3>
-                <p className="text-xs text-rose-300">Permanent database & storage removal</p>
+                <h3 className="text-lg font-bold text-[var(--text-primary)]">Confirm DPR Deletion</h3>
+                <p className="text-xs text-rose-500/80">Permanent database & storage removal</p>
               </div>
             </div>
 
-            <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-xs space-y-2 text-slate-300">
-              <div><strong className="text-slate-400">Project Title:</strong> {deleteTarget.title || deleteTarget.original_filename}</div>
-              <div><strong className="text-slate-400">DPR ID:</strong> <code className="text-blue-400 font-mono">{deleteTarget.id}</code></div>
-              <div><strong className="text-slate-400">Submitted By:</strong> {deleteTarget.submitted_by_name || deleteTarget.submitted_by} (User ID: {deleteTarget.submitted_by_id || '1'})</div>
+            <div className="bg-[var(--bg-secondary)] p-4 rounded-2xl border border-[var(--border)] text-xs space-y-2 text-[var(--text-secondary)]">
+              <div><strong className="text-[var(--text-muted)]">Project Title:</strong> {deleteTarget.title || deleteTarget.original_filename}</div>
+              <div><strong className="text-[var(--text-muted)]">DPR ID:</strong> <code className="text-blue-500 font-mono">{deleteTarget.id}</code></div>
+              <div><strong className="text-[var(--text-muted)]">Submitted By:</strong> {deleteTarget.submitted_by_name || deleteTarget.submitted_by} (User ID: {deleteTarget.submitted_by_id || '1'})</div>
             </div>
 
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-[var(--border)]">
               <button
                 onClick={() => setDeleteTarget(null)}
                 disabled={isDeleting}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium border border-slate-700"
+                className="px-4 py-2 bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] text-[var(--text-secondary)] rounded-xl text-xs font-medium border border-[var(--border)]"
               >
                 Cancel
               </button>

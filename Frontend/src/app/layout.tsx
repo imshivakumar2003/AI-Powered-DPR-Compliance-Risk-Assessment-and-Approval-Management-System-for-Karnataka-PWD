@@ -1,4 +1,4 @@
-﻿// TOPLINE
+// TOPLINE
 
 import type { Metadata } from "next";
 import { Inter, Plus_Jakarta_Sans } from "next/font/google";
@@ -33,6 +33,36 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${inter.variable} ${jakarta.variable}`} suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var saved = localStorage.getItem('theme');
+                  if (!saved) {
+                    var m = document.cookie.match(/(?:^|;\\s*)portal_theme=([^;]*)/);
+                    if (m) saved = m[1];
+                  }
+                  var effective = saved;
+                  if (!effective || effective === 'system') {
+                    effective = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+                  }
+                  var root = document.documentElement;
+                  root.setAttribute('data-theme', effective);
+                  if (effective === 'dark') {
+                    root.classList.add('dark');
+                    root.classList.remove('light');
+                  } else {
+                    root.classList.remove('dark');
+                    root.classList.add('light');
+                  }
+                } catch (e) {}
+              })();
+            `,
+          }}
+        />
+      </head>
       <body suppressHydrationWarning>
         <ThemeProvider>
           <UserProvider>

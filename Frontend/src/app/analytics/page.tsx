@@ -65,8 +65,8 @@ function TrendBarChart({ data }: { data: TrendDataPoint[] }) {
       {[0, 0.5, 1].map(f => (
         <g key={f}>
           <line x1={pad} x2={W - pad} y1={H - H * f} y2={H - H * f}
-            stroke="rgba(255,255,255,0.05)" strokeWidth={1} />
-          <text x={pad - 5} y={H - H * f + 4} textAnchor="end" fill="rgba(255,255,255,0.3)" fontSize={9}>
+            stroke="var(--border)" strokeWidth={1} strokeDasharray={f === 0 ? "none" : "3 3"} />
+          <text x={pad - 5} y={H - H * f + 4} textAnchor="end" fill="var(--text-muted)" fontSize={9}>
             {Math.round(max * f)}
           </text>
         </g>
@@ -78,21 +78,21 @@ function TrendBarChart({ data }: { data: TrendDataPoint[] }) {
         const h3 = d.rejected / max * H;
         return (
           <g key={i}>
-            <rect x={cx - barW * 1.5} y={H - h1} width={barW} height={h1} fill="rgba(59,130,246,0.7)" rx={2} />
-            <rect x={cx - barW * 0.5} y={H - h2} width={barW} height={h2} fill="rgba(34,197,94,0.7)"  rx={2} />
-            <rect x={cx + barW * 0.5} y={H - h3} width={barW} height={h3} fill="rgba(239,68,68,0.65)" rx={2} />
-            <text x={cx} y={H + 14} textAnchor="middle" fill="rgba(255,255,255,0.35)" fontSize={9}>{d.month}</text>
+            <rect x={cx - barW * 1.5} y={H - h1} width={barW} height={h1} fill="rgba(59,130,246,0.8)" rx={2} />
+            <rect x={cx - barW * 0.5} y={H - h2} width={barW} height={h2} fill="rgba(34,197,94,0.8)"  rx={2} />
+            <rect x={cx + barW * 0.5} y={H - h3} width={barW} height={h3} fill="rgba(239,68,68,0.8)" rx={2} />
+            <text x={cx} y={H + 14} textAnchor="middle" fill="var(--text-muted)" fontSize={9} fontWeight={500}>{d.month}</text>
           </g>
         );
       })}
       {[
-        { color: 'rgba(59,130,246,0.8)', label: 'Submitted' },
-        { color: 'rgba(34,197,94,0.8)',  label: 'Approved' },
-        { color: 'rgba(239,68,68,0.75)', label: 'Rejected' },
+        { color: 'rgba(59,130,246,0.85)', label: 'Submitted' },
+        { color: 'rgba(34,197,94,0.85)',  label: 'Approved' },
+        { color: 'rgba(239,68,68,0.85)', label: 'Rejected' },
       ].map((l, i) => (
         <g key={i} transform={`translate(${pad + i * 90}, ${H + 26})`}>
           <rect width={9} height={9} fill={l.color} rx={2} />
-          <text x={13} y={8} fill="rgba(255,255,255,0.4)" fontSize={9}>{l.label}</text>
+          <text x={13} y={8} fill="var(--text-muted)" fontSize={9}>{l.label}</text>
         </g>
       ))}
     </svg>

@@ -7,8 +7,7 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTheme } from "@/lib/ThemeContext";
-
-const API_URL = "http://localhost:8000";
+import { registerUser } from "@/lib/api";
 
 const INDIA_STATES = [
   "Andaman & Nicobar Islands", "Andhra Pradesh", "Arunachal Pradesh", "Assam",
@@ -38,23 +37,14 @@ export default function RegisterPage() {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     setError("");
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, email, password, full_name: fullName, state }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        setError(data.detail || "Registration failed. Try a different Login ID.");
-        setLoading(false);
-        return;
-      }
+      await registerUser({ username: username.trim(), email: email.trim(), password, full_name: fullName.trim(), state });
       router.push("/auth/login");
-    } catch {
-      setError("Cannot connect to the server. Please try again.");
+    } catch (err: any) {
+      setError(err?.message || "Registration failed. Try a different Login ID.");
       setLoading(false);
     }
   };

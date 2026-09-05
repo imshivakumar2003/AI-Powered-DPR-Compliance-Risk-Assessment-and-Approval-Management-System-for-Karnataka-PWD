@@ -12,6 +12,7 @@ import {
   RefreshCw, ChevronRight, CheckCircle2, Clock, XCircle,
   LayoutGrid, Layers, Database, Compass, Wrench, Shield
 } from 'lucide-react';
+import { DprScoreStrip } from '@/components/common/AiScoreBadges';
 
 const SECTOR_ICONS: Record<string, string> = {
   Roads: '🛣️',
@@ -140,7 +141,7 @@ export function DocumentIntelligenceView({ moduleType, title }: DocumentIntellig
       <div className="page-content fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         
         {/* ── Project Switcher & Header Bar ── */}
-        <div className="card" style={{ padding: '14px 18px', background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.85), rgba(15, 23, 42, 0.95))', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+        <div className="card" style={{ padding: '14px 18px', background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
             
             {/* Left: Project Selector */}
@@ -156,7 +157,7 @@ export function DocumentIntelligenceView({ moduleType, title }: DocumentIntellig
                   value={selectedProjectId}
                   onChange={e => handleSelectProject(e.target.value)}
                   className="select-field"
-                  style={{ width: '100%', maxWidth: 460, marginTop: 3, padding: '6px 10px', fontSize: 13, fontWeight: 600, color: '#fff' }}
+                  style={{ width: '100%', maxWidth: 460, marginTop: 3, padding: '6px 10px', fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 6 }}
                   disabled={loadingProjects || projects.length === 0}
                 >
                   {projects.length === 0 ? (
@@ -175,15 +176,15 @@ export function DocumentIntelligenceView({ moduleType, title }: DocumentIntellig
             {/* Middle: Active Project Quick Info Pills */}
             {activeProject && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <div style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.04)', borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)', fontSize: 11.5 }}>
+                <div style={{ padding: '4px 10px', background: 'var(--bg-secondary)', borderRadius: 6, border: '1px solid var(--border)', fontSize: 11.5 }}>
                   <span style={{ color: 'var(--text-muted)' }}>Sector: </span>
                   <strong style={{ color: 'var(--text-primary)' }}>{activeProject.sector || 'Roads'}</strong>
                 </div>
-                <div style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.04)', borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)', fontSize: 11.5 }}>
+                <div style={{ padding: '4px 10px', background: 'var(--bg-secondary)', borderRadius: 6, border: '1px solid var(--border)', fontSize: 11.5 }}>
                   <span style={{ color: 'var(--text-muted)' }}>Location: </span>
                   <strong style={{ color: 'var(--text-primary)' }}>{activeProject.district ? `${activeProject.district}, ` : ''}{activeProject.state || 'Karnataka'}</strong>
                 </div>
-                <div style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.04)', borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)', fontSize: 11.5 }}>
+                <div style={{ padding: '4px 10px', background: 'var(--bg-secondary)', borderRadius: 6, border: '1px solid var(--border)', fontSize: 11.5 }}>
                   <span style={{ color: 'var(--text-muted)' }}>Cost: </span>
                   <strong style={{ color: 'var(--accent-green)' }}>₹{activeProject.estimated_cost?.toFixed(1)} Cr</strong>
                 </div>
@@ -196,9 +197,9 @@ export function DocumentIntelligenceView({ moduleType, title }: DocumentIntellig
               <button
                 onClick={() => setViewMode('inspector')}
                 style={{
-                  background: viewMode === 'inspector' ? 'var(--accent-blue)' : 'rgba(255,255,255,0.04)',
+                  background: viewMode === 'inspector' ? 'var(--accent-blue)' : 'var(--bg-secondary)',
                   color: viewMode === 'inspector' ? '#fff' : 'var(--text-secondary)',
-                  border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '6px 12px',
+                  border: '1px solid var(--border)', borderRadius: 6, padding: '6px 12px',
                   fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5
                 }}
               >
@@ -207,9 +208,9 @@ export function DocumentIntelligenceView({ moduleType, title }: DocumentIntellig
               <button
                 onClick={() => setViewMode('grid')}
                 style={{
-                  background: viewMode === 'grid' ? 'var(--accent-blue)' : 'rgba(255,255,255,0.04)',
+                  background: viewMode === 'grid' ? 'var(--accent-blue)' : 'var(--bg-secondary)',
                   color: viewMode === 'grid' ? '#fff' : 'var(--text-secondary)',
-                  border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '6px 12px',
+                  border: '1px solid var(--border)', borderRadius: 6, padding: '6px 12px',
                   fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5
                 }}
               >
@@ -259,8 +260,8 @@ export function DocumentIntelligenceView({ moduleType, title }: DocumentIntellig
                       className="card"
                       style={{
                         padding: 16, cursor: 'pointer',
-                        background: isSelected ? 'rgba(59, 130, 246, 0.12)' : 'rgba(15, 23, 42, 0.8)',
-                        border: isSelected ? '1.5px solid var(--accent-blue)' : '1px solid rgba(255,255,255,0.07)',
+                        background: isSelected ? 'rgba(59, 130, 246, 0.12)' : 'var(--bg-card)',
+                        border: isSelected ? '1.5px solid var(--accent-blue)' : '1px solid var(--border)',
                         display: 'flex', flexDirection: 'column', gap: 10, transition: 'transform 0.15s ease'
                       }}
                     >
@@ -271,7 +272,7 @@ export function DocumentIntelligenceView({ moduleType, title }: DocumentIntellig
                             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
                               {p.sector || 'Infrastructure'}
                             </div>
-                            <div style={{ fontSize: 13.5, fontWeight: 700, color: '#fff', maxWidth: 190, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-primary)', maxWidth: 190, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {p.title || p.filename}
                             </div>
                           </div>
@@ -284,7 +285,10 @@ export function DocumentIntelligenceView({ moduleType, title }: DocumentIntellig
                         <div>💰 ₹{p.estimated_cost?.toFixed(1)} Cr · 🏢 {p.submitted_by || 'Karnataka PWD'}</div>
                       </div>
 
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: 11, color: 'var(--accent-blue)', fontWeight: 600 }}>
+                      {/* Centralized AI Scores Strip */}
+                      <DprScoreStrip scores={p} size="xs" />
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, borderTop: '1px solid var(--border)', fontSize: 11, color: 'var(--accent-blue)', fontWeight: 600 }}>
                         <span>Open Document Intelligence</span>
                         <ChevronRight size={13} />
                       </div>

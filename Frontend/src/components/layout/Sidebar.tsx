@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useUser } from '@/lib/UserContext';
+import { useTheme } from '@/lib/ThemeContext';
 import {
   fetchDashboardStats, fetchRiskAlerts, fetchRecommendations, fetchProjects
 } from '@/lib/api';
@@ -11,7 +12,7 @@ import {
   LayoutDashboard, FileText, Upload, BarChart3, Map,
   Settings, Users, ShieldAlert, CheckCircle, LogOut,
   Lightbulb, BookOpen, ClipboardList, Send, Eye, Sparkles, ClipboardCheck, FolderKanban,
-  Brain, Clock, Bot,
+  Brain, Clock, Bot, Sun, Moon, AreaChart, PieChart
 } from 'lucide-react';
 
 // ── Nav per role ──
@@ -21,29 +22,26 @@ const ADMIN_NAV = [
     items: [
       { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard, badge: null },
       { href: '/admin/dpr-management', label: 'DPR Management', icon: FolderKanban, badge: 'All', badgeColor: 'blue' },
-      { href: '/dpr/queue', label: 'Pending Reviews', icon: Clock, badge: 'queue', badgeColor: 'amber' },
-      { href: '/approvals', label: 'Approvals Workflow', icon: CheckCircle, badge: 'approvals', badgeColor: 'green' },
-      { href: '/dpr/upload', label: 'Upload DPR', icon: Upload, badge: null },
+      { href: '/admin/document-intelligence', label: 'Document Intelligence & RAG Engine', icon: Brain, badge: 'RAG', badgeColor: 'blue' },
+      { href: '/admin/ai-chatbot', label: 'AI Chatbot', icon: Bot, badge: 'AI', badgeColor: 'blue' },
+      { href: '/application-status', label: 'Application Status', icon: ClipboardCheck, badge: 'app_status', badgeColor: 'blue' },
+      { href: '/approvals', label: 'My Approvals', icon: CheckCircle, badge: 'approvals', badgeColor: 'green' },
+      { href: '/admin/visual-representation', label: 'Visual Representation', icon: AreaChart, badge: 'Live', badgeColor: 'blue' },
+      { href: '/analytics', label: 'Reports', icon: BarChart3, badge: null },
+      { href: '/settings', label: 'Settings', icon: Settings, badge: null },
     ],
   },
   {
-    section: 'Intelligence & Analytics',
+    section: 'Tools & Reference',
     items: [
-      { href: '/admin/ai-chatbot', label: 'AI Chatbot', icon: Bot, badge: 'AI', badgeColor: 'blue' },
-      { href: '/admin/document-intelligence', label: 'Document Intelligence & RAG', icon: Brain, badge: 'RAG', badgeColor: 'blue' },
+      { href: '/dpr/queue', label: 'Pending Reviews', icon: Clock, badge: 'queue', badgeColor: 'amber' },
+      { href: '/dpr/upload', label: 'Upload DPR', icon: Upload, badge: null },
       { href: '/ai-suggestions', label: 'AI Analysis', icon: Sparkles, badge: 'AI', badgeColor: 'blue' },
-      { href: '/analytics', label: 'Reports & Analytics', icon: BarChart3, badge: null },
       { href: '/recommendations', label: 'Recommendations', icon: Lightbulb, badge: 'recs', badgeColor: 'amber' },
       { href: '/risk-map', label: 'Risk Map', icon: Map, badge: null },
       { href: '/risk-alerts', label: 'Risk Alerts', icon: ShieldAlert, badge: 'alerts', badgeColor: 'red' },
-    ],
-  },
-  {
-    section: 'Administration',
-    items: [
       { href: '/users', label: 'Users & Roles', icon: Users, badge: null },
       { href: '/admin/templates', label: 'DPR Templates', icon: FileText, badge: 'New', badgeColor: 'green' },
-      { href: '/settings', label: 'Settings', icon: Settings, badge: null },
     ],
   },
 ];
@@ -55,6 +53,7 @@ const REVIEWER_NAV = [
       { href: '/user/dashboard', label: 'User Dashboard', icon: LayoutDashboard, badge: null },
       { href: '/dpr/queue', label: 'DPRs for Review', icon: FileText, badge: 'queue', badgeColor: 'amber' },
       { href: '/approvals', label: 'My Approvals', icon: CheckCircle, badge: 'approvals', badgeColor: 'amber' },
+      { href: '/admin/visual-representation', label: 'Visual Representation', icon: AreaChart, badge: 'Live', badgeColor: 'blue' },
     ],
   },
   {
@@ -88,6 +87,7 @@ const SUBMITTER_NAV = [
       { href: '/dpr/upload', label: 'Upload DPR', icon: Send, badge: null },
       { href: '/dpr/queue', label: 'My DPRs', icon: ClipboardList, badge: 'queue', badgeColor: 'amber' },
       { href: '/application-status', label: 'Application Status', icon: ClipboardCheck, badge: 'app_status', badgeColor: 'blue' },
+      { href: '/admin/visual-representation', label: 'Visual Representation', icon: AreaChart, badge: 'Live', badgeColor: 'blue' },
     ],
   },
   {
@@ -108,6 +108,7 @@ const VIEWER_NAV = [
       { href: '/viewer/dashboard', label: 'Viewer Dashboard', icon: LayoutDashboard, badge: null },
       { href: '/dpr/queue', label: 'DPR Queue', icon: Eye, badge: 'queue', badgeColor: 'amber' },
       { href: '/application-status', label: 'Application Status', icon: ClipboardCheck, badge: 'app_status', badgeColor: 'blue' },
+      { href: '/admin/visual-representation', label: 'Visual Representation', icon: AreaChart, badge: 'Live', badgeColor: 'blue' },
     ],
   },
   {
@@ -130,6 +131,7 @@ const FULL_USER_NAV = [
       { href: '/dpr/upload', label: 'Upload DPR', icon: Upload, badge: null },
       { href: '/application-status', label: 'Application Status', icon: ClipboardCheck, badge: 'app_status', badgeColor: 'blue' },
       { href: '/approvals', label: 'Approvals', icon: CheckCircle, badge: 'approvals', badgeColor: 'amber' },
+      { href: '/admin/visual-representation', label: 'Visual Representation', icon: AreaChart, badge: 'Live', badgeColor: 'blue' },
     ],
   },
   {
@@ -187,6 +189,7 @@ interface SidebarCounts {
 export function Sidebar() {
   const pathname = usePathname();
   const { user, logout } = useUser();
+  const { toggleTheme, resolvedTheme } = useTheme();
   const navItems = getNav(user.role, user.username);
   const isFullUser = (user.username || '').toLowerCase().trim() === 'user' || (user.displayName || '').toLowerCase().includes('project requester');
   const roleInfo = isFullUser ? { label: 'Project Requester', color: '#3b82f6' } : (ROLE_LABELS[user.role] ?? ROLE_LABELS['viewer']);
@@ -308,8 +311,27 @@ export function Sidebar() {
             <div className="user-name">{user.displayName}</div>
             <div className="user-role">{user.department ?? roleInfo.label}</div>
           </div>
-          <div onClick={logout} title="Logout" style={{ marginLeft: 'auto', flexShrink: 0, cursor: 'pointer', padding: 4 }}>
-            <LogOut size={15} style={{ color: 'var(--text-muted)' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto', flexShrink: 0 }}>
+            <div
+              onClick={toggleTheme}
+              title={`Switch to ${resolvedTheme === 'dark' ? 'Light' : 'Dark'} Mode`}
+              style={{ cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center', borderRadius: 6 }}
+              className="hover:bg-[var(--bg-card-hover)]"
+            >
+              {resolvedTheme === 'dark' ? (
+                <Sun size={14} style={{ color: '#f59e0b' }} />
+              ) : (
+                <Moon size={14} style={{ color: '#2563eb' }} />
+              )}
+            </div>
+            <div
+              onClick={logout}
+              title="Logout"
+              style={{ cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center', borderRadius: 6 }}
+              className="hover:bg-[var(--accent-red-glow)]"
+            >
+              <LogOut size={14} style={{ color: 'var(--text-muted)' }} />
+            </div>
           </div>
         </div>
       </div>

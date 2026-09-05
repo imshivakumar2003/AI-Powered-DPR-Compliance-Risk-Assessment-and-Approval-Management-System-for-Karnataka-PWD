@@ -18,6 +18,7 @@ import {
   queryAiChatbot, exportChatTranscript, fetchExtractedPages,
   DocumentPage, ChatbotQueryResponse, ChatbotCitedImage
 } from '@/lib/api';
+import { AiConfidenceChip } from '@/components/common/AiScoreBadges';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -358,12 +359,12 @@ export function AiChatbotView({ moduleType, title }: AiChatbotViewProps) {
       <div className="page-content fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
         {/* ── 1. HEADER & DPR SELECTOR STRIP ── */}
-        <div className="card" style={{ padding: '14px 18px', background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.85), rgba(15, 23, 42, 0.95))', border: '1px solid rgba(59, 130, 246, 0.35)' }}>
+        <div className="card" style={{ padding: '14px 18px', background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
             
             {/* Left: DPR Dropdown Selector */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 280 }}>
-              <div style={{ width: 40, height: 40, borderRadius: 10, background: 'linear-gradient(135deg, rgba(59,130,246,0.3), rgba(147,51,234,0.3))', border: '1px solid rgba(59,130,246,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-blue)', flexShrink: 0 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(59, 130, 246, 0.15)', border: '1px solid rgba(59, 130, 246, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-blue)', flexShrink: 0 }}>
                 <Bot size={22} />
               </div>
               <div style={{ flex: 1 }}>
@@ -374,7 +375,7 @@ export function AiChatbotView({ moduleType, title }: AiChatbotViewProps) {
                   value={selectedProjectId}
                   onChange={e => handleSelectProject(e.target.value)}
                   className="select-field"
-                  style={{ width: '100%', maxWidth: 460, marginTop: 3, padding: '6px 10px', fontSize: 13, fontWeight: 600, color: '#fff' }}
+                  style={{ width: '100%', maxWidth: 460, marginTop: 3, padding: '6px 10px', fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 6 }}
                   disabled={loadingProjects || projects.length === 0}
                 >
                   {projects.length === 0 ? (
@@ -393,15 +394,15 @@ export function AiChatbotView({ moduleType, title }: AiChatbotViewProps) {
             {/* Middle: Active DPR Quick Info */}
             {activeProject && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <div style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.04)', borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)', fontSize: 11.5 }}>
+                <div style={{ padding: '4px 10px', background: 'var(--bg-secondary)', borderRadius: 6, border: '1px solid var(--border)', fontSize: 11.5 }}>
                   <span style={{ color: 'var(--text-muted)' }}>Sector: </span>
-                  <strong style={{ color: '#fff' }}>{activeProject.sector || 'Roads'}</strong>
+                  <strong style={{ color: 'var(--text-primary)' }}>{activeProject.sector || 'Roads'}</strong>
                 </div>
-                <div style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.04)', borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)', fontSize: 11.5 }}>
+                <div style={{ padding: '4px 10px', background: 'var(--bg-secondary)', borderRadius: 6, border: '1px solid var(--border)', fontSize: 11.5 }}>
                   <span style={{ color: 'var(--text-muted)' }}>Location: </span>
-                  <strong style={{ color: '#fff' }}>{activeProject.district ? `${activeProject.district}, ` : ''}{activeProject.state || 'Karnataka'}</strong>
+                  <strong style={{ color: 'var(--text-primary)' }}>{activeProject.district ? `${activeProject.district}, ` : ''}{activeProject.state || 'Karnataka'}</strong>
                 </div>
-                <div style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.04)', borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)', fontSize: 11.5 }}>
+                <div style={{ padding: '4px 10px', background: 'var(--bg-secondary)', borderRadius: 6, border: '1px solid var(--border)', fontSize: 11.5 }}>
                   <span style={{ color: 'var(--text-muted)' }}>Cost: </span>
                   <strong style={{ color: 'var(--accent-green)' }}>₹{activeProject.estimated_cost?.toFixed(1)} Cr</strong>
                 </div>
@@ -409,7 +410,7 @@ export function AiChatbotView({ moduleType, title }: AiChatbotViewProps) {
             )}
 
             {/* Right: Multi-Language Selector Toggle */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(0,0,0,0.3)', padding: '4px 8px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--bg-secondary)', padding: '4px 8px', borderRadius: 8, border: '1px solid var(--border)' }}>
               <Globe size={13} color="var(--accent-blue)" />
               <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>Lang:</span>
               <button
@@ -452,7 +453,7 @@ export function AiChatbotView({ moduleType, title }: AiChatbotViewProps) {
           {messages.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '40px 16px', color: 'var(--text-muted)' }}>
               <Bot size={40} style={{ margin: '0 auto 12px', color: 'var(--accent-blue)' }} />
-              <div style={{ fontSize: 16, fontWeight: 800, color: '#fff' }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)' }}>
                 {selectedLanguage === 'kn'
                   ? 'ಕರ್ನಾಟಕ ಲೋಕೋಪಯೋಗಿ ಇಲಾಖೆ (PWD) ಡಿಪಿಆರ್ ಸರಳ ವಿವರಣೆ ಸಹಾಯಕ'
                   : selectedLanguage === 'hi'
@@ -474,19 +475,17 @@ export function AiChatbotView({ moduleType, title }: AiChatbotViewProps) {
                     key={idx}
                     onClick={() => handleSendMessage(qp.prompt)}
                     style={{
-                      background: 'rgba(255,255,255,0.03)',
-                      border: '1px solid rgba(255,255,255,0.08)',
+                      background: 'var(--bg-secondary)',
+                      border: '1px solid var(--border)',
                       borderRadius: 8, padding: '12px 14px', cursor: 'pointer',
                       display: 'flex', flexDirection: 'column', gap: 6,
                       transition: 'all 0.15s ease'
                     }}
                     onMouseEnter={e => {
-                      e.currentTarget.style.background = 'rgba(59, 130, 246, 0.15)';
-                      e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.4)';
+                      e.currentTarget.style.borderColor = 'var(--accent-blue)';
                     }}
                     onMouseLeave={e => {
-                      e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
-                      e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
+                      e.currentTarget.style.borderColor = 'var(--border)';
                     }}
                   >
                     <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-blue)' }}>
@@ -515,8 +514,8 @@ export function AiChatbotView({ moduleType, title }: AiChatbotViewProps) {
                     maxWidth: '90%',
                     padding: '16px 20px',
                     borderRadius: 12,
-                    background: msg.sender === 'user' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(15, 23, 42, 0.95)',
-                    border: msg.sender === 'user' ? '1px solid var(--accent-blue)' : '1px solid rgba(59, 130, 246, 0.25)',
+                    background: msg.sender === 'user' ? 'rgba(59, 130, 246, 0.15)' : 'var(--bg-card)',
+                    border: msg.sender === 'user' ? '1px solid var(--accent-blue)' : '1px solid var(--border)',
                     color: 'var(--text-primary)',
                     fontSize: 13.5,
                     lineHeight: 1.75
@@ -531,14 +530,16 @@ export function AiChatbotView({ moduleType, title }: AiChatbotViewProps) {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                         
                         {/* 1. Header Bar */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 8, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                             <span style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--accent-blue)', display: 'flex', alignItems: 'center', gap: 5 }}>
                               <Bot size={15} /> {msg.engine || 'Karnataka PWD Intelligence Assistant'}
                             </span>
-                            <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 8, background: 'rgba(34,197,94,0.15)', color: 'var(--accent-green)', border: '1px solid rgba(34,197,94,0.3)' }}>
-                              ✓ Confidence: {msg.confidence_level || 'High (95%)'}
-                            </span>
+                            <AiConfidenceChip
+                              score={msg.confidence_score || 95}
+                              sourceReliability={98}
+                              documentRelevance={94}
+                            />
                           </div>
 
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -565,7 +566,7 @@ export function AiChatbotView({ moduleType, title }: AiChatbotViewProps) {
                         </div>
 
                         {/* 3. Citations & Transparency Verification Bar */}
-                        <div style={{ marginTop: 6, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.25)', padding: '10px 14px', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <div style={{ marginTop: 6, paddingTop: 10, borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)', padding: '10px 14px', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                               <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
@@ -576,9 +577,9 @@ export function AiChatbotView({ moduleType, title }: AiChatbotViewProps) {
                                   key={pg}
                                   onClick={() => setInspectPageNum(pg)}
                                   style={{
-                                    background: 'rgba(59, 130, 246, 0.25)',
-                                    border: '1px solid rgba(59, 130, 246, 0.45)',
-                                    color: '#fff', borderRadius: 6, padding: '3px 8px', fontSize: 11,
+                                    background: 'rgba(59, 130, 246, 0.15)',
+                                    border: '1px solid rgba(59, 130, 246, 0.35)',
+                                    color: 'var(--accent-blue)', borderRadius: 6, padding: '3px 8px', fontSize: 11,
                                     fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4
                                   }}
                                   title={`Click to open exact Page ${pg} in OCR Inspector`}
@@ -620,12 +621,12 @@ export function AiChatbotView({ moduleType, title }: AiChatbotViewProps) {
                                   key={imgIdx}
                                   onClick={() => setActivePreviewImage(img)}
                                   style={{
-                                    width: 140, background: '#000', borderRadius: 6, padding: 4,
-                                    border: '1px solid rgba(59,130,246,0.3)', cursor: 'pointer', flexShrink: 0
+                                    width: 140, background: 'var(--bg-secondary)', borderRadius: 6, padding: 4,
+                                    border: '1px solid var(--border)', cursor: 'pointer', flexShrink: 0
                                   }}
                                 >
                                   <img src={`${API_BASE}${img.image_url}`} alt="Blueprint" style={{ width: '100%', height: 75, objectFit: 'contain' }} />
-                                  <div style={{ fontSize: 10, color: '#fff', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  <div style={{ fontSize: 10, color: 'var(--text-primary)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     Page {img.page_number} · {img.type_label}
                                   </div>
                                 </div>
@@ -636,7 +637,7 @@ export function AiChatbotView({ moduleType, title }: AiChatbotViewProps) {
 
                         {/* 5. Dynamic Context-Aware Follow-Up Suggestions */}
                         {msgIdx === messages.length - 1 && msg.follow_up_suggestions && msg.follow_up_suggestions.length > 0 && (
-                          <div style={{ marginTop: 8, paddingTop: 10, borderTop: '1px dashed rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          <div style={{ marginTop: 8, paddingTop: 10, borderTop: '1px dashed var(--border)', display: 'flex', flexDirection: 'column', gap: 6 }}>
                             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-blue)', display: 'flex', alignItems: 'center', gap: 4 }}>
                               <Sparkles size={12} />
                               {selectedLanguage === 'kn' ? 'ಮುಂದಿನ ಪ್ರಶ್ನೆಗಳ ಸಲಹೆಗಳು:' : selectedLanguage === 'hi' ? 'सुझाए गए अनुवर्ती प्रश्न:' : 'Contextual Follow-Up Suggestions:'}
@@ -649,7 +650,7 @@ export function AiChatbotView({ moduleType, title }: AiChatbotViewProps) {
                                   style={{
                                     background: 'rgba(59, 130, 246, 0.12)',
                                     border: '1px solid rgba(59, 130, 246, 0.25)',
-                                    color: '#fff', borderRadius: 14, padding: '4px 10px',
+                                    color: 'var(--accent-blue)', borderRadius: 14, padding: '4px 10px',
                                     fontSize: 11, fontWeight: 600, cursor: 'pointer',
                                     display: 'inline-flex', alignItems: 'center', gap: 4
                                   }}
@@ -696,19 +697,17 @@ export function AiChatbotView({ moduleType, title }: AiChatbotViewProps) {
               key={qIdx}
               onClick={() => handleSendMessage(qa.prompt)}
               style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.1)',
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border)',
                 borderRadius: 14, padding: '4px 10px', fontSize: 11, fontWeight: 600,
                 color: 'var(--text-secondary)', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0
               }}
               onMouseEnter={e => {
-                e.currentTarget.style.background = 'rgba(59, 130, 246, 0.2)';
-                e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.4)';
-                e.currentTarget.style.color = '#fff';
+                e.currentTarget.style.borderColor = 'var(--accent-blue)';
+                e.currentTarget.style.color = 'var(--accent-blue)';
               }}
               onMouseLeave={e => {
-                e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
-                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
+                e.currentTarget.style.borderColor = 'var(--border)';
                 e.currentTarget.style.color = 'var(--text-secondary)';
               }}
             >
@@ -808,18 +807,18 @@ export function AiChatbotView({ moduleType, title }: AiChatbotViewProps) {
       {/* ── 5. INTERACTIVE DPR PAGE INSPECTOR MODAL ── */}
       {inspectPageNum !== null && (
         <div
-          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
           onClick={() => setInspectPageNum(null)}
         >
           <div
             className="card"
-            style={{ maxWidth: 880, width: '100%', maxHeight: '88vh', background: '#0f172a', border: '1px solid rgba(59,130,246,0.4)', padding: 22, display: 'flex', flexDirection: 'column', gap: 14 }}
+            style={{ maxWidth: 880, width: '100%', maxHeight: '88vh', background: 'var(--bg-card)', border: '1px solid var(--border)', padding: 22, display: 'flex', flexDirection: 'column', gap: 14 }}
             onClick={e => e.stopPropagation()}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <FileText size={18} color="var(--accent-blue)" />
-                <span style={{ fontSize: 15, fontWeight: 800, color: '#fff' }}>
+                <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary)' }}>
                   DPR Page Inspector: Page {inspectPageNum}
                 </span>
                 <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
@@ -835,7 +834,7 @@ export function AiChatbotView({ moduleType, title }: AiChatbotViewProps) {
                   {pageTextCopied ? <Check size={12} color="var(--accent-green)" /> : <Copy size={12} />}
                   {pageTextCopied ? 'Copied' : 'Copy Page Text'}
                 </button>
-                <button onClick={() => setInspectPageNum(null)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}>
+                <button onClick={() => setInspectPageNum(null)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
                   <X size={20} />
                 </button>
               </div>
@@ -847,8 +846,8 @@ export function AiChatbotView({ moduleType, title }: AiChatbotViewProps) {
               </div>
               <div style={{
                 fontFamily: 'monospace', fontSize: 12.5, lineHeight: 1.8,
-                background: 'rgba(0,0,0,0.5)', padding: 16, borderRadius: 8,
-                border: '1px solid rgba(255,255,255,0.06)', whiteSpace: 'pre-wrap', color: 'var(--text-primary)'
+                background: 'var(--bg-secondary)', padding: 16, borderRadius: 8,
+                border: '1px solid var(--border)', whiteSpace: 'pre-wrap', color: 'var(--text-primary)'
               }}>
                 {inspectedPageObj ? (inspectedPageObj.text || inspectedPageObj.page_text || 'No readable text layer on this drawing page.') : `Loading extracted text for Page ${inspectPageNum}...`}
               </div>
@@ -859,16 +858,16 @@ export function AiChatbotView({ moduleType, title }: AiChatbotViewProps) {
 
       {/* ── 6. IMAGE PREVIEW LIGHTBOX MODAL ── */}
       {activePreviewImage && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.9)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} onClick={() => setActivePreviewImage(null)}>
-          <div className="card" style={{ maxWidth: 840, width: '100%', maxHeight: '85vh', background: '#0f172a', border: '1px solid rgba(59,130,246,0.4)', padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }} onClick={e => e.stopPropagation()}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} onClick={() => setActivePreviewImage(null)}>
+          <div className="card" style={{ maxWidth: 840, width: '100%', maxHeight: '85vh', background: 'var(--bg-card)', border: '1px solid var(--border)', padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>Page {activePreviewImage.page_number} · {activePreviewImage.type_label}</span>
-              <button onClick={() => setActivePreviewImage(null)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}><X size={20} /></button>
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>Page {activePreviewImage.page_number} · {activePreviewImage.type_label}</span>
+              <button onClick={() => setActivePreviewImage(null)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}><X size={20} /></button>
             </div>
-            <div style={{ background: '#000', borderRadius: 8, maxHeight: 420, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ background: 'var(--bg-secondary)', borderRadius: 8, maxHeight: 420, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <img src={`${API_BASE}${activePreviewImage.image_url}`} alt="Blueprint" style={{ maxWidth: '100%', maxHeight: 420, objectFit: 'contain' }} />
             </div>
-            <div style={{ fontSize: 12.5, color: '#fff', lineHeight: 1.5, background: 'rgba(59,130,246,0.08)', padding: 10, borderRadius: 6 }}>
+            <div style={{ fontSize: 12.5, color: 'var(--text-primary)', lineHeight: 1.5, background: 'var(--bg-secondary)', padding: 10, borderRadius: 6, border: '1px solid var(--border)' }}>
               {activePreviewImage.ai_description}
             </div>
           </div>

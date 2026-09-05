@@ -9,9 +9,10 @@ import { useUser } from '@/lib/UserContext';
 import {
   ArrowLeft, CheckCircle2, XCircle, Clock, Eye,
   AlertTriangle, Send, Download, RefreshCw, FileText,
-  Building2, MessageSquare, History, Check, X
+  Building2, MessageSquare, History, Check, X, Sparkles
 } from 'lucide-react';
-import { getUserHeaders } from '@/lib/api';
+import { getUserHeaders, fetchDprAiScores, DprAiScores } from '@/lib/api';
+import { AiScoreBadge, DprScoreStrip, AiScoresFullCard } from '@/components/common/AiScoreBadges';
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -81,6 +82,21 @@ interface AppDetail {
   timeline: TimelineEvent[];
   certificate?: any;
   approval_comment: string | null;
+  overall_score?: number;
+  overall_ai_score?: number;
+  dpr_quality_score?: number;
+  compliance_score?: number;
+  risk_score?: number;
+  technical_score?: number;
+  financial_score?: number;
+  documentation_score?: number;
+  approval_readiness_score?: number;
+  confidence_score?: number;
+  ocr_accuracy?: number;
+  rag_confidence?: number;
+  recommendation_score?: number;
+  grade?: string;
+  color?: string;
 }
 
 function getStatusBadge(status: string) {
@@ -105,6 +121,7 @@ export default function ApplicationStatusDetailPage() {
   const { user } = useUser();
 
   const [detail, setDetail] = useState<AppDetail | null>(null);
+  const [aiScores, setAiScores] = useState<DprAiScores | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
 
@@ -119,12 +136,14 @@ export default function ApplicationStatusDetailPage() {
     if (!projectId) return;
     try {
       setLoading(true);
-      const res = await fetch(`${API}/api/application-status/${projectId}`, {
-        headers: getUserHeaders(),
-      });
+      const [res, scoresData] = await Promise.all([
+        fetch(`${API}/api/application-status/${projectId}`, { headers: getUserHeaders() }),
+        fetchDprAiScores(projectId)
+      ]);
       if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
       const data = await res.json();
       setDetail(data);
+      setAiScores(scoresData);
     } catch (err: any) {
       setError(err.message || 'Failed to load application detail');
     } finally {
@@ -303,6 +322,17 @@ export default function ApplicationStatusDetailPage() {
                 <span>📅 Submitted: <strong>{detail.upload_date?.slice(0, 10)}</strong></span>
                 <span>🎯 Target SLA: <strong style={{ color: 'var(--accent-cyan)' }}>{detail.expected_completion_date}</strong></span>
               </div>
+
+              {/* AI Scores Summary Row */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <Sparkles size={12} color="#3b82f6" /> AI Evaluation:
+                </span>
+                <AiScoreBadge score={detail.dpr_quality_score ?? detail.overall_score} label="Quality" size="sm" />
+                <AiScoreBadge score={detail.compliance_score} label="Compliance" size="sm" />
+                <AiScoreBadge score={detail.risk_score} label="Risk" size="sm" isRisk={true} />
+                <AiScoreBadge score={detail.approval_readiness_score} label="Readiness" size="sm" />
+              </div>
             </div>
 
             <div style={{ textAlign: 'right' }}>
@@ -320,7 +350,12 @@ export default function ApplicationStatusDetailPage() {
           </div>
         </div>
 
-        {/* ── 2. 9-STAGE VISUAL WORKFLOW PROGRESS TIMELINE ── */}
+        {/* ── 2. AI SCORES FULL INTELLIGENCE CARD ── */}
+        {aiScores && (
+          <AiScoresFullCard scores={aiScores} />
+        )}
+
+        {/* ── 3. 9-STAGE VISUAL WORKFLOW PROGRESS TIMELINE ── */}
         <div className="card" style={{ padding: 20, background: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(59, 130, 246, 0.25)' }}>
           <div style={{ fontSize: 12, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 14 }}>
             9-Stage Government Workflow Progression:

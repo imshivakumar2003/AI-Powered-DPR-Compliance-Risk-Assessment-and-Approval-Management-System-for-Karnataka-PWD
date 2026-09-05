@@ -44,11 +44,21 @@ class UserInDB(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+    role: Optional[str] = None
+    username: Optional[str] = None
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    department: Optional[str] = None
+    id: Optional[int] = None
 
 
 class TokenData(BaseModel):
     username: Optional[str] = None
     role: Optional[str] = None
+    id: Optional[int] = None
+    email: Optional[str] = None
+    department: Optional[str] = None
+    full_name: Optional[str] = None
 
 
 class LoginRequest(BaseModel):
@@ -121,6 +131,7 @@ def init_db():
         ('email_alerts', '1'),
         ('auto_assign', '1'),
         ('language', 'en'),
+        ('theme', 'system'),
     ]
     for k, v in defaults:
         cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
@@ -221,14 +232,26 @@ def authenticate_user(username: str, password: str) -> Optional[UserInDB]:
     """
     Authenticate by Login ID (username or email) and password.
     """
-    if "@" in username:
-        user = get_user_by_email(username)
+    clean_user = (username or "").strip()
+    if "@" in clean_user:
+        user = get_user_by_email(clean_user)
     else:
-        user = get_user(username)
+        user = get_user(clean_user)
     if not user:
         return None
     if not verify_password(password, user.hashed_password):
         return None
+    
+    # Record last_login timestamp in database
+    try:
+        conn = _get_db()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET last_login = ? WHERE id = ?", (datetime.now(timezone.utc).isoformat(), user.id))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
     return user
 
 
@@ -244,11 +267,18 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 def decode_token(token: str) -> Optional[TokenData]:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub", "")
+        username: str = payload.get("sub", "") or payload.get("username", "")
         role: str = payload.get("role", "")
         if not username:
             return None
-        return TokenData(username=username, role=role)
+        return TokenData(
+            username=username,
+            role=role,
+            id=payload.get("id"),
+            email=payload.get("email"),
+            department=payload.get("department"),
+            full_name=payload.get("full_name")
+        )
     except JWTError:
         return None
 
@@ -431,6 +461,7 @@ class AppSettings(BaseModel):
     auto_assign: bool = True
     language: str = "en"
     groq_api_key: Optional[str] = ""
+    theme: str = "system"  # "light", "dark", "system"
 
 
 def get_settings() -> AppSettings:
@@ -446,6 +477,7 @@ def get_settings() -> AppSettings:
         auto_assign=rows.get("auto_assign", "1") == "1",
         language=rows.get("language", "en"),
         groq_api_key=rows.get("groq_api_key", os.environ.get("GROQ_API_KEY", "")),
+        theme=rows.get("theme", "system"),
     )
 
 
@@ -459,6 +491,7 @@ def save_settings(s: AppSettings) -> AppSettings:
         ("auto_assign", "1" if s.auto_assign else "0"),
         ("language", s.language),
         ("groq_api_key", s.groq_api_key or ""),
+        ("theme", s.theme or "system"),
     ]
     for k, v in data:
         cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (k, v))

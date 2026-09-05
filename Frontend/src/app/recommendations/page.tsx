@@ -136,10 +136,10 @@ export default function RecommendationsPage() {
     const q = searchQuery.toLowerCase().trim();
     const matchSearch = !q ||
       r.title.toLowerCase().includes(q) ||
-      r.explanation.toLowerCase().includes(q) ||
+      (r.explanation || r.description || '').toLowerCase().includes(q) ||
       r.reason.toLowerCase().includes(q) ||
-      r.guideline_reference.toLowerCase().includes(q) ||
-      r.dpr_section_name.toLowerCase().includes(q);
+      (r.guideline_reference || '').toLowerCase().includes(q) ||
+      (r.dpr_section_name || '').toLowerCase().includes(q);
     return matchCat && matchImp && matchSearch;
   });
 
@@ -433,7 +433,7 @@ export default function RecommendationsPage() {
                       <strong>Reason for Recommendation:</strong> {rec.reason}
                     </div>
                     <div style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.6 }}>
-                      {rec.explanation}
+                      {rec.explanation || rec.description}
                     </div>
                   </div>
 

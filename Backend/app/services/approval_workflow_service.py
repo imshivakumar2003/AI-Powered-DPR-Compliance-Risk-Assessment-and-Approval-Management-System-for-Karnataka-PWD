@@ -211,23 +211,27 @@ def get_ai_approval_assistant_insights(dpr_id: str) -> Dict[str, Any]:
     full_text = doc.get("full_text", "") if doc else ""
     text_lower = full_text.lower()
 
-    # Extract specs and run audits
+    # Extract specs for engineering summary
     specs = extract_entities_and_specs(full_text, proj)
-    dqci = calculate_dqci_score(full_text, proj, doc.get("total_pages", 1) if doc else 1)
-    compliance = audit_irc_kpwd_compliance(full_text, proj)
+
+    # Centralized AI scores
+    from app.services.ai_scores_service import compute_centralized_dpr_scores
+    central_scores = compute_centralized_dpr_scores(dpr_id, {
+        "title": proj.title or proj.filename,
+        "original_filename": proj.original_filename,
+        "sector": proj.sector,
+        "status": proj.status,
+        "overall_score": proj.overall_score,
+        "risk_score": proj.risk_score,
+        "compliance_score": proj.compliance_score,
+    })
 
     est_cost = float(proj.estimated_cost or 50.0)
-    compliance_score = compliance.get("compliance_score", 92.0)
-    dqci_score = dqci.get("overall_dqci", 91.5)
-    dqci_grade = dqci.get("grade", "Grade A+")
-
-    # Compute risk score (0 - 100)
-    risk_score = 18.0
-    if est_cost > 100: risk_score += 15
-    if "forest" in text_lower: risk_score += 10
-    if "land acquisition" in text_lower and "jms" not in text_lower: risk_score += 12
-
-    approval_readiness = round((compliance_score * 0.45) + (dqci_score * 0.35) + ((100 - risk_score) * 0.20), 1)
+    compliance_score = central_scores.compliance_score
+    dqci_score = central_scores.dpr_quality_score
+    dqci_grade = central_scores.grade
+    risk_score = central_scores.risk_score
+    approval_readiness = central_scores.approval_readiness_score
 
     # Determine AI Sanction Recommendation
     if approval_readiness >= 85 and compliance_score >= 80:
@@ -401,6 +405,7 @@ def get_approvals_dashboard_kpis() -> Dict[str, Any]:
     total_projects = len(all_projects)
 
     workflows = []
+    from app.services.ai_scores_service import compute_centralized_dpr_scores
     for p in all_projects:
         wf = get_or_create_dpr_workflow(p.id)
         if wf:
@@ -409,6 +414,30 @@ def get_approvals_dashboard_kpis() -> Dict[str, Any]:
             wf["estimated_cost"] = p.estimated_cost
             wf["state"] = getattr(p, "state", "Karnataka")
             wf["upload_date"] = p.upload_date
+
+            c_scores = compute_centralized_dpr_scores(p.id, {
+                "title": p.title or p.filename,
+                "sector": p.sector,
+                "status": p.status,
+                "overall_score": p.overall_score,
+                "risk_score": p.risk_score,
+                "compliance_score": p.compliance_score,
+            })
+            wf["overall_ai_score"] = c_scores.overall_ai_score
+            wf["dpr_quality_score"] = c_scores.dpr_quality_score
+            wf["compliance_score"] = c_scores.compliance_score
+            wf["risk_score"] = c_scores.risk_score
+            wf["technical_score"] = c_scores.technical_score
+            wf["financial_score"] = c_scores.financial_score
+            wf["documentation_score"] = c_scores.documentation_score
+            wf["approval_readiness_score"] = c_scores.approval_readiness_score
+            wf["confidence_score"] = c_scores.confidence_score
+            wf["ocr_accuracy"] = c_scores.ocr_accuracy
+            wf["rag_confidence"] = c_scores.rag_confidence
+            wf["recommendation_score"] = c_scores.recommendation_score
+            wf["grade"] = c_scores.grade
+            wf["color"] = c_scores.color
+
             workflows.append(wf)
 
     final_approved = sum(1 for w in workflows if w["overall_status"] == "FINAL_APPROVED")
@@ -545,6 +574,17 @@ def build_enterprise_application_status(project: Any, wf: Optional[Dict[str, Any
 
     priority = "High" if est_cost > 100 or ai_insights.get("risk_score", 20) > 30 else "Standard"
 
+    from app.services.ai_scores_service import compute_centralized_dpr_scores
+    central_scores = compute_centralized_dpr_scores(pid, {
+        "title": project.title or project.filename,
+        "original_filename": project.original_filename,
+        "sector": project.sector,
+        "status": project.status,
+        "overall_score": project.overall_score,
+        "risk_score": project.risk_score,
+        "compliance_score": project.compliance_score,
+    })
+
     return {
         "id": pid,
         "ref_number": f"KPWD-DPR-2026-{pid[:6].upper()}",
@@ -566,17 +606,32 @@ def build_enterprise_application_status(project: Any, wf: Optional[Dict[str, Any
         "nine_stages": NINE_STAGES,
         "expected_completion_date": expected_completion,
         "priority_level": priority,
-        "risk_level": "High" if ai_insights.get("risk_score", 20) > 40 else "Medium" if ai_insights.get("risk_score", 20) > 20 else "Low",
+        "risk_level": "High" if central_scores.risk_score > 70 else "Medium" if central_scores.risk_score > 40 else "Low",
         "estimated_cost": est_cost,
         "duration_months": getattr(project, "duration_months", 24) or 24,
         "department_tracking": dept_matrix,
+        "overall_score": central_scores.dpr_quality_score,
+        "overall_ai_score": central_scores.overall_ai_score,
+        "dpr_quality_score": central_scores.dpr_quality_score,
+        "compliance_score": central_scores.compliance_score,
+        "risk_score": central_scores.risk_score,
+        "technical_score": central_scores.technical_score,
+        "financial_score": central_scores.financial_score,
+        "documentation_score": central_scores.documentation_score,
+        "approval_readiness_score": central_scores.approval_readiness_score,
+        "confidence_score": central_scores.confidence_score,
+        "ocr_accuracy": central_scores.ocr_accuracy,
+        "rag_confidence": central_scores.rag_confidence,
+        "recommendation_score": central_scores.recommendation_score,
+        "grade": central_scores.grade,
+        "color": central_scores.color,
         "ai_status_intelligence": {
-            "approval_probability": 92 if overall_status == "FINAL_APPROVED" else max(60, int(ai_insights.get("approval_readiness_score", 85))),
-            "approval_readiness_score": ai_insights.get("approval_readiness_score", 88.0),
-            "compliance_score": ai_insights.get("compliance_score", 92.0),
-            "dqci_quality_score": ai_insights.get("dqci_quality_score", 91.0),
-            "dqci_grade": ai_insights.get("dqci_grade", "Grade A+"),
-            "risk_score": ai_insights.get("risk_score", 18.0),
+            "approval_probability": 92 if overall_status == "FINAL_APPROVED" else central_scores.approval_readiness_score,
+            "approval_readiness_score": central_scores.approval_readiness_score,
+            "compliance_score": central_scores.compliance_score,
+            "dqci_quality_score": central_scores.dpr_quality_score,
+            "dqci_grade": central_scores.grade,
+            "risk_score": central_scores.risk_score,
             "ai_recommendation": ai_insights.get("ai_recommendation", "Recommend Approval"),
             "missing_alerts": ai_insights.get("suggested_corrections", []),
             "recommended_next_actions": [
