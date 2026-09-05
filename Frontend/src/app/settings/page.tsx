@@ -3,7 +3,7 @@
 'use client';
 import { Topbar } from '@/components/layout/Topbar';
 import { useState, useEffect } from 'react';
-import { Save, Brain, RefreshCw, Database, Bell, Globe, Loader } from 'lucide-react';
+import { Save, Brain, RefreshCw, Database, Bell, Globe, Loader, Key, Eye, EyeOff, Sparkles, ExternalLink } from 'lucide-react';
 import { fetchSettings, saveSettings } from '@/lib/api';
 
 export default function SettingsPage() {
@@ -16,6 +16,8 @@ export default function SettingsPage() {
   const [emailAlerts, setEmailAlerts]     = useState(true);
   const [autoAssign, setAutoAssign]       = useState(true);
   const [lang, setLang]                   = useState('en');
+  const [groqApiKey, setGroqApiKey]       = useState('');
+  const [showApiKey, setShowApiKey]       = useState(false);
 
   // Load persisted settings from the database when the page opens
   useEffect(() => {
@@ -24,6 +26,7 @@ export default function SettingsPage() {
       setEmailAlerts(s.email_alerts);
       setAutoAssign(s.auto_assign);
       setLang(s.language);
+      setGroqApiKey(s.groq_api_key || '');
     }).finally(() => setLoading(false));
   }, []);
 
@@ -37,6 +40,7 @@ export default function SettingsPage() {
         email_alerts:   emailAlerts,
         auto_assign:    autoAssign,
         language:       lang,
+        groq_api_key:   groqApiKey.trim(),
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
@@ -132,6 +136,73 @@ export default function SettingsPage() {
             <div className="info-box blue" style={{ marginTop: 8 }}>
               <RefreshCw size={13} style={{ flexShrink: 0, color: 'var(--accent-blue)', marginTop: 1 }} />
               <span>Recalibrate the model with new project outcomes via the admin panel. Weights are updated monthly using the XGBoost feature importance algorithm.</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Groq AI API Key & Model Configuration */}
+        <div className="card" style={{ marginBottom: 18 }}>
+          <div className="card-header">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Key size={16} color="var(--accent-blue)" />
+                <div>
+                  <div className="card-title">Groq AI API Key Configuration</div>
+                  <div className="card-subtitle">Set Groq API key for real-time Llama-3.3-70B AI Assistant reasoning</div>
+                </div>
+              </div>
+              <span style={{
+                fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
+                background: groqApiKey.trim() ? 'rgba(34,197,94,0.15)' : 'rgba(245,158,11,0.15)',
+                color: groqApiKey.trim() ? 'var(--accent-green)' : 'var(--accent-amber)',
+                border: `1px solid ${groqApiKey.trim() ? 'rgba(34,197,94,0.3)' : 'rgba(245,158,11,0.3)'}`,
+                display: 'flex', alignItems: 'center', gap: 5
+              }}>
+                <Sparkles size={11} />
+                {groqApiKey.trim() ? 'LLM Active (Groq Llama-3.3-70B)' : 'Offline (DPR Knowledge Engine)'}
+              </span>
+            </div>
+          </div>
+          <div className="card-body">
+            <div className="form-group">
+              <label className="label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Groq API Key</span>
+                <a
+                  href="https://console.groq.com/keys"
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ fontSize: 11, color: 'var(--accent-blue)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                >
+                  Get Free API Key <ExternalLink size={10} />
+                </a>
+              </label>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div style={{ position: 'relative', flex: 1 }}>
+                  <input
+                    type={showApiKey ? 'text' : 'password'}
+                    placeholder="gsk_..."
+                    value={groqApiKey}
+                    onChange={e => setGroqApiKey(e.target.value)}
+                    className="select-field"
+                    style={{ width: '100%', paddingRight: 40, fontFamily: showApiKey ? 'monospace' : 'inherit' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowApiKey(!showApiKey)}
+                    style={{
+                      position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                      background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
+                      padding: 4, display: 'flex', alignItems: 'center'
+                    }}
+                    title={showApiKey ? 'Hide API Key' : 'Show API Key'}
+                  >
+                    {showApiKey ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+              </div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 8, lineHeight: 1.5 }}>
+                Persisting your Groq API key enables live, high-speed LLM reasoning for the <strong>DPR AI Assistant</strong> across all pages and user roles. If left blank, the assistant automatically utilizes the built-in Karnataka PWD &amp; MoRTH DPR Knowledge Engine.
+              </div>
             </div>
           </div>
         </div>

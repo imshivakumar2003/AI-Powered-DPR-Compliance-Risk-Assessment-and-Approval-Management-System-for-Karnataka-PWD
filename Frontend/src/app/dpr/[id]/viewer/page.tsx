@@ -7,9 +7,10 @@ import { Topbar } from '@/components/layout/Topbar';
 import Link from 'next/link';
 import {
   ArrowLeft, ZoomIn, ZoomOut, Download, Printer,
-  FileText, AlertCircle, RotateCcw,
+  FileText, AlertCircle, RotateCcw, Brain
 } from 'lucide-react';
 import { getUserHeaders } from '@/lib/api';
+import { DprDocumentIntelligence } from '@/components/dpr/DprDocumentIntelligence';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -25,6 +26,7 @@ export default function DprViewerPage() {
   const { id } = useParams();
   const dprId = id as string;
 
+  const [viewMode, setViewMode]   = useState<'pdf' | 'intelligence'>('pdf');
   const [zoom, setZoom]           = useState(100);        // percent
   const [status, setStatus]       = useState<'loading' | 'ready' | 'error'>('loading');
   const [errorMsg, setErrorMsg]   = useState('');
@@ -125,32 +127,65 @@ export default function DprViewerPage() {
               )}
             </div>
 
-            {/* Zoom controls */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <button onClick={handleZoomOut} disabled={zoom <= 40 || status !== 'ready'}
-                title="Zoom Out" style={toolbarBtnStyle(zoom <= 40 || status !== 'ready')}>
-                <ZoomOut size={15} />
+            {/* Mode Switcher */}
+            <div style={{
+              display: 'flex', background: 'rgba(255,255,255,0.05)',
+              padding: 3, borderRadius: 8, border: '1px solid var(--border)'
+            }}>
+              <button
+                onClick={() => setViewMode('pdf')}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px',
+                  borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none',
+                  background: viewMode === 'pdf' ? 'var(--accent-blue)' : 'transparent',
+                  color: viewMode === 'pdf' ? '#fff' : 'var(--text-muted)',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <FileText size={13} /> PDF View
               </button>
-
-              <button onClick={handleReset} disabled={status !== 'ready'}
-                title="Reset Zoom"
-                style={{ ...toolbarBtnStyle(status !== 'ready'), minWidth: 60, fontWeight: 700, fontSize: 12 }}>
-                {zoom}%
-              </button>
-
-              <button onClick={handleZoomIn} disabled={zoom >= 200 || status !== 'ready'}
-                title="Zoom In" style={toolbarBtnStyle(zoom >= 200 || status !== 'ready')}>
-                <ZoomIn size={15} />
-              </button>
-
-              <button onClick={handleReset} disabled={status !== 'ready'}
-                title="Reset Zoom" style={toolbarBtnStyle(status !== 'ready')}>
-                <RotateCcw size={15} />
+              <button
+                onClick={() => setViewMode('intelligence')}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px',
+                  borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none',
+                  background: viewMode === 'intelligence' ? 'var(--accent-purple)' : 'transparent',
+                  color: viewMode === 'intelligence' ? '#fff' : 'var(--text-muted)',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <Brain size={13} /> Intelligence & RAG
               </button>
             </div>
 
             {/* Divider */}
             <div style={{ width: 1, height: 28, background: 'var(--border)', margin: '0 4px' }} />
+
+            {/* Zoom controls (only active in PDF view) */}
+            {viewMode === 'pdf' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button onClick={handleZoomOut} disabled={zoom <= 40 || status !== 'ready'}
+                  title="Zoom Out" style={toolbarBtnStyle(zoom <= 40 || status !== 'ready')}>
+                  <ZoomOut size={15} />
+                </button>
+
+                <button onClick={handleReset} disabled={status !== 'ready'}
+                  title="Reset Zoom"
+                  style={{ ...toolbarBtnStyle(status !== 'ready'), minWidth: 60, fontWeight: 700, fontSize: 12 }}>
+                  {zoom}%
+                </button>
+
+                <button onClick={handleZoomIn} disabled={zoom >= 200 || status !== 'ready'}
+                  title="Zoom In" style={toolbarBtnStyle(zoom >= 200 || status !== 'ready')}>
+                  <ZoomIn size={15} />
+                </button>
+
+                <button onClick={handleReset} disabled={status !== 'ready'}
+                  title="Reset Zoom" style={toolbarBtnStyle(status !== 'ready')}>
+                  <RotateCcw size={15} />
+                </button>
+              </div>
+            )}
 
             {/* Action buttons */}
             <button onClick={handlePrint} disabled={status !== 'ready'}
@@ -178,15 +213,21 @@ export default function DprViewerPage() {
           </div>
         </div>
 
-        {/* ── Viewer area ── */}
-        <div
-          className="card"
-          style={{
-            overflow: 'hidden', minHeight: 700,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 0, position: 'relative',
-          }}
-        >
+        {/* ── Document Intelligence Mode ── */}
+        {viewMode === 'intelligence' && (
+          <DprDocumentIntelligence projectId={dprId} projectTitle={displayName} />
+        )}
+
+        {/* ── Viewer area (PDF mode) ── */}
+        {viewMode === 'pdf' && (
+          <div
+            className="card"
+            style={{
+              overflow: 'hidden', minHeight: 700,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: 0, position: 'relative',
+            }}
+          >
           {status === 'loading' && (
             <div style={{ textAlign: 'center', padding: 60 }}>
               <div
@@ -272,6 +313,7 @@ export default function DprViewerPage() {
             </div>
           )}
         </div>
+        )}
 
         {/* ── Footer note ── */}
         <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', paddingBottom: 8 }}>

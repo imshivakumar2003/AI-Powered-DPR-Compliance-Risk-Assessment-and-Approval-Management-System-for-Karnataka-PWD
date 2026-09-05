@@ -11,7 +11,7 @@ import {
   LayoutDashboard, FileText, Upload, BarChart3, Map,
   Settings, Users, ShieldAlert, CheckCircle, LogOut,
   Lightbulb, BookOpen, ClipboardList, Send, Eye, Sparkles, ClipboardCheck, FolderKanban,
-  Brain, Clock,
+  Brain, Clock, Bot,
 } from 'lucide-react';
 
 // ── Nav per role ──
@@ -29,7 +29,9 @@ const ADMIN_NAV = [
   {
     section: 'Intelligence & Analytics',
     items: [
-      { href: '/ai-suggestions', label: 'AI Analysis', icon: Brain, badge: 'AI', badgeColor: 'blue' },
+      { href: '/admin/ai-chatbot', label: 'AI Chatbot', icon: Bot, badge: 'AI', badgeColor: 'blue' },
+      { href: '/admin/document-intelligence', label: 'Document Intelligence & RAG', icon: Brain, badge: 'RAG', badgeColor: 'blue' },
+      { href: '/ai-suggestions', label: 'AI Analysis', icon: Sparkles, badge: 'AI', badgeColor: 'blue' },
       { href: '/analytics', label: 'Reports & Analytics', icon: BarChart3, badge: null },
       { href: '/recommendations', label: 'Recommendations', icon: Lightbulb, badge: 'recs', badgeColor: 'amber' },
       { href: '/risk-map', label: 'Risk Map', icon: Map, badge: null },
@@ -58,6 +60,8 @@ const REVIEWER_NAV = [
   {
     section: 'Intelligence',
     items: [
+      { href: '/user/ai-chatbot', label: 'AI Chatbot', icon: Bot, badge: 'AI', badgeColor: 'blue' },
+      { href: '/user/document-intelligence', label: 'Document Intelligence & RAG', icon: Brain, badge: 'RAG', badgeColor: 'blue' },
       { href: '/analytics', label: 'Analytics', icon: BarChart3, badge: null },
       { href: '/ai-suggestions', label: 'AI Suggestions', icon: Sparkles, badge: null },
       { href: '/recommendations', label: 'Recommendations', icon: Lightbulb, badge: 'recs', badgeColor: 'amber' },
@@ -79,6 +83,8 @@ const SUBMITTER_NAV = [
     section: 'Dashboard',
     items: [
       { href: '/user/dashboard', label: 'User Dashboard', icon: LayoutDashboard, badge: null },
+      { href: '/user/ai-chatbot', label: 'AI Chatbot', icon: Bot, badge: 'AI', badgeColor: 'blue' },
+      { href: '/user/document-intelligence', label: 'Document Intelligence & RAG', icon: Brain, badge: 'RAG', badgeColor: 'blue' },
       { href: '/dpr/upload', label: 'Upload DPR', icon: Send, badge: null },
       { href: '/dpr/queue', label: 'My DPRs', icon: ClipboardList, badge: 'queue', badgeColor: 'amber' },
       { href: '/application-status', label: 'Application Status', icon: ClipboardCheck, badge: 'app_status', badgeColor: 'blue' },
@@ -129,6 +135,8 @@ const FULL_USER_NAV = [
   {
     section: 'Intelligence',
     items: [
+      { href: '/user/ai-chatbot', label: 'AI Chatbot', icon: Bot, badge: 'AI', badgeColor: 'blue' },
+      { href: '/user/document-intelligence', label: 'Document Intelligence & RAG', icon: Brain, badge: 'RAG', badgeColor: 'blue' },
       { href: '/analytics', label: 'Analytics', icon: BarChart3, badge: null },
       { href: '/ai-suggestions', label: 'AI Suggestions', icon: Sparkles, badge: null },
       { href: '/recommendations', label: 'Recommendations', icon: Lightbulb, badge: 'recs', badgeColor: 'amber' },

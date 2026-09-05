@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { useUser } from '@/lib/UserContext';
 import {
   fetchGlobalNotifications, markAllNotificationsRead, markSingleNotificationRead,
@@ -13,13 +13,22 @@ import {
 import {
   Bell, Search, RefreshCw, CheckCircle, XCircle, Clock,
   FileText, Brain, MessageSquare, ShieldAlert, Check, CheckCheck,
-  ChevronRight, Sparkles, Filter, Plus, Upload, Moon, Sun, User
+  ChevronRight, Sparkles, Filter, Plus, Upload, Moon, Sun, User,
+  ArrowLeft
 } from 'lucide-react';
+
+export interface BreadcrumbItem {
+  label: string;
+  href?: string;
+}
 
 interface TopbarProps {
   title: string;
   subtitle?: string;
   actions?: React.ReactNode;
+  showBackButton?: boolean;
+  backUrl?: string;
+  breadcrumbs?: BreadcrumbItem[];
 }
 
 function timeAgo(iso: string): string {
@@ -60,9 +69,10 @@ function notifIcon(eventType: string, message: string) {
   return <Clock size={14} color="#06b6d4" />;
 }
 
-export function Topbar({ title, subtitle, actions }: TopbarProps) {
+export function Topbar({ title, subtitle, actions, showBackButton = true, backUrl, breadcrumbs: customBreadcrumbs }: TopbarProps) {
   const { user } = useUser();
   const router = useRouter();
+  const pathname = usePathname() || '';
 
   const [notifications, setNotifications] = useState<GlobalNotification[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -130,11 +140,82 @@ export function Topbar({ title, subtitle, actions }: TopbarProps) {
     }
   };
 
+  // Smart Back Navigation
+  const handleBack = () => {
+    if (backUrl) {
+      router.push(backUrl);
+    } else if (typeof window !== 'undefined' && window.history.length > 1) {
+      router.back();
+    } else {
+      const defaultDashboard = user?.role === 'admin' ? '/admin/dashboard' : '/user/dashboard';
+      router.push(defaultDashboard);
+    }
+  };
+
+  // Auto-generate breadcrumbs if not explicitly passed
+  const breadcrumbs = customBreadcrumbs || (() => {
+    const crumbs: BreadcrumbItem[] = [];
+    const rootHome = user?.role === 'admin' ? '/admin/dashboard' : '/user/dashboard';
+    crumbs.push({ label: 'Home', href: rootHome });
+
+    const parts = pathname.split('/').filter(Boolean);
+    if (parts.length > 0) {
+      let accumPath = '';
+      parts.forEach((p, idx) => {
+        accumPath += `/${p}`;
+        const isLast = idx === parts.length - 1;
+        const formattedLabel = p
+          .replace(/-/g, ' ')
+          .replace(/\b\w/g, c => c.toUpperCase());
+        crumbs.push({
+          label: formattedLabel,
+          href: isLast ? undefined : accumPath
+        });
+      });
+    }
+    return crumbs;
+  })();
+
+  const isHomeDashboard = pathname === '/admin/dashboard' || pathname === '/user/dashboard' || pathname === '/';
+
   return (
     <div className="topbar sticky top-0 z-40 bg-slate-900/90 backdrop-blur-xl border-b border-slate-800/80 px-6 py-3 flex items-center justify-between">
-      <div className="topbar-left flex items-center gap-4">
+      <div className="topbar-left flex items-center gap-3">
+        {/* Universal Back Button */}
+        {showBackButton && !isHomeDashboard && (
+          <button
+            onClick={handleBack}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl border border-slate-700/80 text-xs font-semibold transition-all shadow-sm active:scale-95 cursor-pointer"
+            title="Return to previous page (Preserves filters &amp; state)"
+            aria-label="Back"
+          >
+            <ArrowLeft className="w-4 h-4 text-blue-400" />
+            <span className="hidden sm:inline">Back</span>
+          </button>
+        )}
+
         <div>
-          <span className="topbar-title text-lg font-extrabold text-white tracking-tight">{title}</span>
+          {/* Breadcrumbs Navigation */}
+          {breadcrumbs.length > 1 && (
+            <nav className="flex items-center gap-1 text-[10.5px] text-slate-400 font-medium mb-0.5 flex-wrap">
+              {breadcrumbs.map((bc, idx) => (
+                <span key={idx} className="flex items-center gap-1">
+                  {idx > 0 && <ChevronRight className="w-3 h-3 text-slate-600" />}
+                  {bc.href ? (
+                    <Link href={bc.href} className="hover:text-blue-400 transition-colors">
+                      {bc.label}
+                    </Link>
+                  ) : (
+                    <span className="text-slate-300 font-semibold">{bc.label}</span>
+                  )}
+                </span>
+              ))}
+            </nav>
+          )}
+
+          <div className="flex items-center gap-2">
+            <span className="topbar-title text-lg font-extrabold text-white tracking-tight">{title}</span>
+          </div>
           {subtitle && <span className="topbar-subtitle text-xs text-slate-400 block">{subtitle}</span>}
         </div>
       </div>

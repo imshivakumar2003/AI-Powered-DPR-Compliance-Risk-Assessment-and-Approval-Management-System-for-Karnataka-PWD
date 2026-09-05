@@ -218,6 +218,92 @@ def init_project_db():
     except sqlite3.OperationalError:
         pass
 
+    # ── Document Intelligence: Extracted Full Documents ──────────────────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS dpr_extracted_documents (
+            project_id TEXT PRIMARY KEY,
+            full_text TEXT NOT NULL,
+            total_pages INTEGER DEFAULT 0,
+            word_count INTEGER DEFAULT 0,
+            character_count INTEGER DEFAULT 0,
+            extraction_method TEXT NOT NULL,
+            has_ocr INTEGER DEFAULT 0,
+            metadata_json TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES projects(id)
+        )
+    """)
+
+    # ── Document Intelligence: Per-Page Text & Metadata ──────────────────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS dpr_document_pages (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            page_number INTEGER NOT NULL,
+            page_text TEXT NOT NULL,
+            word_count INTEGER DEFAULT 0,
+            character_count INTEGER DEFAULT 0,
+            is_ocr INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES projects(id)
+        )
+    """)
+
+    # ── Document Intelligence: Semantic RAG Chunks ───────────────────────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS dpr_rag_chunks (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            chunk_index INTEGER NOT NULL,
+            page_number INTEGER NOT NULL,
+            chunk_text TEXT NOT NULL,
+            heading TEXT,
+            token_count INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES projects(id)
+        )
+    """)
+
+    # ── Document Intelligence: LLM Structured Insights ───────────────────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS dpr_llm_insights (
+            project_id TEXT PRIMARY KEY,
+            summary TEXT,
+            objectives TEXT,
+            technical_specs TEXT,
+            financial_breakdown TEXT,
+            clearances TEXT,
+            risks TEXT,
+            compliance TEXT,
+            raw_json TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES projects(id)
+        )
+    """)
+
+    # ── Document Intelligence: Extracted Images & AI Descriptions ────────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS dpr_extracted_images (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            page_number INTEGER NOT NULL,
+            image_index INTEGER NOT NULL,
+            filename TEXT NOT NULL,
+            image_url TEXT NOT NULL,
+            image_path TEXT,
+            width INTEGER DEFAULT 0,
+            height INTEGER DEFAULT 0,
+            position_y REAL DEFAULT 0,
+            image_type TEXT DEFAULT 'general',
+            type_label TEXT DEFAULT 'Visual Asset',
+            ai_description TEXT,
+            ai_tags_json TEXT,
+            upload_timestamp TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES projects(id)
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -478,6 +564,406 @@ def ensure_upload_timeline(project_id: str) -> None:
                                f"DPR '{p.title or p.original_filename}' submitted for review.",
                                p.submitted_by or "User", "user")
 
+# ── Document Intelligence & Extraction CRUD ──────────────────────────────────
+
+def save_extracted_document(project_id: str, full_text: str, total_pages: int,
+                            word_count: int, character_count: int,
+                            extraction_method: str, has_ocr: bool = False,
+                            metadata: dict = None, upload_timestamp: str = None) -> dict:
+    created_at = upload_timestamp or (datetime.utcnow().isoformat() + "Z")
+    
+    # 1. Dual-write to MongoDB (dpr_documents collection)
+    try:
+        from app.db.mongo import save_document_to_mongo
+        save_document_to_mongo(
+            dpr_id=project_id,
+            doc_data={
+                "full_text": full_text,
+                "total_pages": total_pages,
+                "word_count": word_count,
+                "character_count": character_count,
+                "extraction_method": extraction_method,
+                "has_ocr": has_ocr,
+                "metadata": metadata or {}
+            },
+            upload_timestamp=created_at
+        )
+    except Exception as me:
+        print(f"[ProjectService] MongoDB save_document note: {me}")
+
+    # 2. Dual-write to local SQLite store
+    conn = _get_db()
+    cursor = conn.cursor()
+    meta_json = json.dumps(metadata or {})
+    cursor.execute(
+        """INSERT OR REPLACE INTO dpr_extracted_documents
+           (project_id, full_text, total_pages, word_count, character_count,
+            extraction_method, has_ocr, metadata_json, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?)""",
+        (project_id, full_text, total_pages, word_count, character_count,
+         extraction_method, 1 if has_ocr else 0, meta_json, created_at)
+    )
+    conn.commit()
+    conn.close()
+    return {
+        "project_id": project_id, "total_pages": total_pages, "word_count": word_count,
+        "character_count": character_count, "extraction_method": extraction_method,
+        "has_ocr": has_ocr, "created_at": created_at
+    }
+
+
+def get_extracted_document(project_id: str) -> Optional[dict]:
+    from app.services.doc_extractor import is_binary_or_pdf_stream
+
+    # 1. Check MongoDB first
+    try:
+        from app.db.mongo import get_document_from_mongo
+        mongo_doc = get_document_from_mongo(project_id)
+        if mongo_doc and mongo_doc.get("full_text"):
+            if not is_binary_or_pdf_stream(mongo_doc["full_text"]):
+                return {
+                    "project_id": project_id,
+                    "full_text": mongo_doc.get("full_text", ""),
+                    "total_pages": mongo_doc.get("total_pages", 0),
+                    "word_count": mongo_doc.get("word_count", 0),
+                    "character_count": mongo_doc.get("character_count", 0),
+                    "extraction_method": mongo_doc.get("extraction_method", "unknown"),
+                    "has_ocr": bool(mongo_doc.get("has_ocr", False)),
+                    "metadata": mongo_doc.get("metadata", {}),
+                    "created_at": mongo_doc.get("created_at") or mongo_doc.get("upload_timestamp", "")
+                }
+    except Exception as me:
+        print(f"[ProjectService] MongoDB get_document note: {me}")
+
+    # 2. Fallback to SQLite
+    conn = _get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM dpr_extracted_documents WHERE project_id = ?", (project_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    d = dict(row)
+    txt = d.get("full_text", "")
+    # If legacy stored text is raw binary, reject it so re-extraction runs cleanly
+    if is_binary_or_pdf_stream(txt):
+        return None
+
+    d["has_ocr"] = bool(d.get("has_ocr", 0))
+    try:
+        d["metadata"] = json.loads(d.get("metadata_json") or "{}")
+    except Exception:
+        d["metadata"] = {}
+    return d
+
+
+def save_document_pages(project_id: str, pages: List[dict], upload_timestamp: str = None) -> None:
+    created_at = upload_timestamp or (datetime.utcnow().isoformat() + "Z")
+
+    # 1. Dual-write to MongoDB (dpr_pages collection)
+    try:
+        from app.db.mongo import save_pages_to_mongo
+        save_pages_to_mongo(dpr_id=project_id, pages=pages, upload_timestamp=created_at)
+    except Exception as me:
+        print(f"[ProjectService] MongoDB save_pages note: {me}")
+
+    # 2. Dual-write to local SQLite store
+    conn = _get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM dpr_document_pages WHERE project_id = ?", (project_id,))
+    for p in pages:
+        page_id = str(uuid.uuid4())
+        txt = p.get("extracted_text") or p.get("page_text") or p.get("text") or ""
+        cursor.execute(
+            """INSERT INTO dpr_document_pages
+               (id, project_id, page_number, page_text, word_count, character_count, is_ocr, created_at)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (page_id, project_id, p.get("page_number", 1), txt,
+             p.get("word_count", len(txt.split()) if txt else 0),
+             p.get("character_count", len(txt)),
+             1 if p.get("is_ocr") else 0, created_at)
+        )
+    conn.commit()
+    conn.close()
+
+
+def get_document_pages(project_id: str) -> List[dict]:
+    from app.services.doc_extractor import is_binary_or_pdf_stream
+
+    # 1. Check MongoDB first
+    try:
+        from app.db.mongo import get_pages_from_mongo
+        mongo_pages = get_pages_from_mongo(project_id)
+        if mongo_pages and len(mongo_pages) > 0:
+            clean_mongo_pages = []
+            has_corrupt = False
+            for p in mongo_pages:
+                txt = p.get("extracted_text") or p.get("page_text") or p.get("text") or ""
+                if is_binary_or_pdf_stream(txt):
+                    has_corrupt = True
+                    break
+                clean_mongo_pages.append({
+                    "id": f"{project_id}_{p.get('page_number', 1)}",
+                    "project_id": project_id,
+                    "page_number": p.get("page_number", 1),
+                    "extracted_text": txt,
+                    "page_text": txt,
+                    "text": txt,
+                    "word_count": p.get("word_count", len(txt.split()) if txt else 0),
+                    "character_count": p.get("character_count", len(txt)),
+                    "is_ocr": bool(p.get("is_ocr", False)),
+                    "upload_timestamp": p.get("upload_timestamp", ""),
+                    "created_at": p.get("created_at") or p.get("upload_timestamp", "")
+                })
+            if not has_corrupt and clean_mongo_pages:
+                return clean_mongo_pages
+    except Exception as me:
+        print(f"[ProjectService] MongoDB get_pages note: {me}")
+
+    # 2. Fallback to SQLite store
+    conn = _get_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT * FROM dpr_document_pages WHERE project_id = ? ORDER BY page_number ASC",
+        (project_id,)
+    )
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+
+    clean_rows = []
+    for r in rows:
+        r["is_ocr"] = bool(r.get("is_ocr", 0))
+        txt = r.get("page_text") or r.get("text") or ""
+        # Strictly sanitize against binary stream artifacts
+        if is_binary_or_pdf_stream(txt):
+            txt = f"[Page {r.get('page_number', 1)}: Scanned drawing / diagram page]"
+        r["extracted_text"] = txt
+        r["page_text"] = txt
+        r["text"] = txt
+        clean_rows.append(r)
+    return clean_rows
+
+
+def save_extracted_images(project_id: str, images: List[dict], upload_timestamp: str = None) -> None:
+    created_at = upload_timestamp or (datetime.utcnow().isoformat() + "Z")
+
+    # 1. Dual-write to MongoDB (dpr_images collection)
+    try:
+        from app.db.mongo import save_images_to_mongo
+        save_images_to_mongo(dpr_id=project_id, images=images, upload_timestamp=created_at)
+    except Exception as me:
+        print(f"[ProjectService] MongoDB save_images note: {me}")
+
+    # 2. Dual-write to local SQLite store
+    conn = _get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM dpr_extracted_images WHERE project_id = ?", (project_id,))
+    for img in images:
+        img_id = str(uuid.uuid4())
+        tags_json = json.dumps(img.get("ai_tags", []))
+        cursor.execute(
+            """INSERT INTO dpr_extracted_images
+               (id, project_id, page_number, image_index, filename, image_url, image_path,
+                width, height, position_y, image_type, type_label, ai_description, ai_tags_json, upload_timestamp, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (img_id, project_id, int(img.get("page_number", 1)), int(img.get("image_index", 1)),
+             str(img.get("filename", "")), str(img.get("image_url", "")), str(img.get("image_path", "")),
+             int(img.get("width", 0)), int(img.get("height", 0)), float(img.get("position_y", 0.0)),
+             str(img.get("image_type", "general")), str(img.get("type_label", "Visual Asset")),
+             str(img.get("ai_description", "")), tags_json, str(img.get("upload_timestamp", created_at)), created_at)
+        )
+    conn.commit()
+    conn.close()
+
+
+def get_extracted_images(project_id: str, page_number: Optional[int] = None) -> List[dict]:
+    # 1. Check MongoDB first
+    try:
+        from app.db.mongo import get_images_from_mongo
+        mongo_imgs = get_images_from_mongo(project_id, page_number=page_number)
+        if mongo_imgs is not None:
+            return mongo_imgs
+    except Exception as me:
+        print(f"[ProjectService] MongoDB get_images note: {me}")
+
+    # 2. Fallback to SQLite store
+    conn = _get_db()
+    cursor = conn.cursor()
+    if page_number is not None:
+        cursor.execute(
+            "SELECT * FROM dpr_extracted_images WHERE project_id = ? AND page_number = ? ORDER BY position_y ASC, image_index ASC",
+            (project_id, int(page_number))
+        )
+    else:
+        cursor.execute(
+            "SELECT * FROM dpr_extracted_images WHERE project_id = ? ORDER BY page_number ASC, position_y ASC, image_index ASC",
+            (project_id,)
+        )
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+
+    for r in rows:
+        try:
+            r["ai_tags"] = json.loads(r.get("ai_tags_json") or "[]")
+        except Exception:
+            r["ai_tags"] = []
+    return rows
+
+
+def save_rag_chunks(project_id: str, chunks: List[dict]) -> None:
+    conn = _get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM dpr_rag_chunks WHERE project_id = ?", (project_id,))
+    created_at = datetime.utcnow().isoformat() + "Z"
+    for c in chunks:
+        chunk_id = str(uuid.uuid4())
+        cursor.execute(
+            """INSERT INTO dpr_rag_chunks
+               (id, project_id, chunk_index, page_number, chunk_text, heading, token_count, created_at)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (chunk_id, project_id, c.get("chunk_index", 1), c.get("page_number", 1),
+             c.get("chunk_text", ""), c.get("heading", ""), c.get("token_count", 0), created_at)
+        )
+    conn.commit()
+    conn.close()
+
+
+def get_rag_chunks(project_id: str) -> List[dict]:
+    conn = _get_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT * FROM dpr_rag_chunks WHERE project_id = ? ORDER BY chunk_index ASC",
+        (project_id,)
+    )
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+
+def save_llm_insights(project_id: str, insights: dict) -> None:
+    conn = _get_db()
+    cursor = conn.cursor()
+    created_at = datetime.utcnow().isoformat() + "Z"
+    summary = insights.get("summary", "")
+    objectives = json.dumps(insights.get("objectives", []))
+    tech = json.dumps(insights.get("technical_specs", {}))
+    fin = json.dumps(insights.get("financial_breakdown", {}))
+    clearances = json.dumps(insights.get("clearances", []))
+    risks = json.dumps(insights.get("risks", []))
+    compliance = json.dumps(insights.get("compliance", []))
+    raw = json.dumps(insights)
+
+    cursor.execute(
+        """INSERT OR REPLACE INTO dpr_llm_insights
+           (project_id, summary, objectives, technical_specs, financial_breakdown,
+            clearances, risks, compliance, raw_json, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        (project_id, summary, objectives, tech, fin, clearances, risks, compliance, raw, created_at)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_llm_insights(project_id: str) -> Optional[dict]:
+    conn = _get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM dpr_llm_insights WHERE project_id = ?", (project_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    d = dict(row)
+    try:
+        return {
+            "project_id": project_id,
+            "summary": d.get("summary", ""),
+            "objectives": json.loads(d.get("objectives") or "[]"),
+            "technical_specs": json.loads(d.get("technical_specs") or "{}"),
+            "financial_breakdown": json.loads(d.get("financial_breakdown") or "{}"),
+            "clearances": json.loads(d.get("clearances") or "[]"),
+            "risks": json.loads(d.get("risks") or "[]"),
+            "compliance": json.loads(d.get("compliance") or "[]"),
+            "created_at": d.get("created_at", "")
+        }
+    except Exception as e:
+        print(f"Error parsing llm insights: {e}")
+        try:
+            return json.loads(d.get("raw_json") or "{}")
+        except Exception:
+            return None
+
+
+def process_and_store_dpr_intelligence(project_id: str, pdf_path: str, api_key: Optional[str] = None) -> dict:
+    """
+    Complete document intelligence pipeline:
+    1. Extract full text & per-page text with OCR fallback
+    2. Store document and pages in DB
+    3. Generate sliding-window RAG chunks and store in DB
+    4. Extract structured LLM parameters and store in DB
+    """
+    try:
+        from app.services.doc_extractor import extract_text_from_pdf
+        from app.services.rag_service import chunk_document_pages
+        from app.services.llm_extractor import extract_dpr_insights
+
+        # Fetch project metadata
+        proj = get_project_by_id(project_id)
+        proj_meta = {
+            "title": proj.title if proj else "Detailed Project Report",
+            "sector": proj.sector if proj else "Infrastructure",
+            "state": proj.state if proj else "Karnataka",
+            "estimated_cost": proj.estimated_cost if proj else 50.0
+        }
+
+        # 1. Text Extraction
+        extraction = extract_text_from_pdf(pdf_path, project_id=project_id)
+        up_ts = proj.upload_date if proj else (datetime.utcnow().isoformat() + "Z")
+        save_extracted_document(
+            project_id=project_id,
+            full_text=extraction["full_text"],
+            total_pages=extraction["total_pages"],
+            word_count=extraction["word_count"],
+            character_count=extraction["character_count"],
+            extraction_method=extraction["extraction_method"],
+            has_ocr=extraction["has_ocr"],
+            metadata=extraction.get("metadata", {}),
+            upload_timestamp=up_ts
+        )
+        save_document_pages(project_id, extraction["pages"], upload_timestamp=up_ts)
+
+        # 2. Image Extraction & AI Explanations
+        from app.services.image_explainer import extract_images_from_pdf
+        images = extract_images_from_pdf(
+            pdf_path=pdf_path,
+            project_id=project_id,
+            pages_data=extraction["pages"],
+            project_meta=proj_meta,
+            api_key=api_key
+        )
+        save_extracted_images(project_id, images, upload_timestamp=up_ts)
+
+        # 3. Multimodal Semantic RAG Chunking (Text + Visual Assets)
+        chunks = chunk_document_pages(extraction["pages"], images=images)
+        save_rag_chunks(project_id, chunks)
+
+        # 4. LLM Insights
+        insights = extract_dpr_insights(extraction["full_text"], proj_meta, api_key=api_key)
+        save_llm_insights(project_id, insights)
+
+        return {
+            "success": True,
+            "total_pages": extraction["total_pages"],
+            "word_count": extraction["word_count"],
+            "images_count": len(images),
+            "chunks_count": len(chunks),
+            "extraction_method": extraction["extraction_method"],
+            "has_ocr": extraction["has_ocr"]
+        }
+    except Exception as e:
+        print(f"[Intelligence Pipeline Error] Failed processing project {project_id}: {e}")
+        return {"success": False, "error": str(e)}
+
+
 # ── Project CRUD ──────────────────────────────────────────────────────────────
 
 def create_project(file_bytes: bytes, original_filename: str, title: str, state: str,
@@ -511,6 +997,15 @@ def create_project(file_bytes: bytes, original_filename: str, title: str, state:
     )
     conn.commit()
     conn.close()
+
+    # Trigger document intelligence pipeline (OCR extraction, sliding-window chunking, LLM parameter extraction)
+    try:
+        from app.services.auth_service import get_settings
+        app_set = get_settings()
+        api_k = app_set.groq_api_key or os.environ.get("GROQ_API_KEY", "")
+        process_and_store_dpr_intelligence(project_id, file_path, api_key=api_k)
+    except Exception as ie:
+        print(f"[Document Intelligence] Extraction trigger note: {ie}")
 
     return Project(
         id=project_id,
@@ -645,7 +1140,13 @@ def delete_project(project_id: str) -> bool:
     filename = row["filename"]
 
     # Delete project record and all related database entries safely
-    for tbl in ["analysis_cache", "category_recommendations", "app_comments", "app_timeline", "app_versions", "dpr_versions", "notifications", "app_notifications"]:
+    try:
+        from app.db.mongo import delete_dpr_from_mongo
+        delete_dpr_from_mongo(project_id)
+    except Exception as me:
+        print(f"[ProjectService] MongoDB delete note: {me}")
+
+    for tbl in ["analysis_cache", "category_recommendations", "app_comments", "app_timeline", "app_versions", "dpr_versions", "notifications", "app_notifications", "dpr_extracted_documents", "dpr_document_pages", "dpr_rag_chunks", "dpr_llm_insights", "dpr_extracted_images"]:
         try:
             cursor.execute(f"DELETE FROM {tbl} WHERE project_id = ?", (project_id,))
         except sqlite3.OperationalError:
@@ -663,6 +1164,15 @@ def delete_project(project_id: str) -> bool:
                 os.remove(file_path)
             except Exception:
                 pass
+
+    # Delete extracted images folder from disk
+    try:
+        import shutil
+        img_folder = os.path.join(UPLOAD_DIR, "dpr_images", project_id)
+        if os.path.exists(img_folder):
+            shutil.rmtree(img_folder, ignore_errors=True)
+    except Exception:
+        pass
 
     return True
     

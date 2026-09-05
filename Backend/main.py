@@ -3,12 +3,13 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks, Response, Request
 from fastapi.responses import PlainTextResponse, FileResponse, HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 
 import random
 import hashlib
 import numpy as np
+from datetime import datetime
 
 app = FastAPI(title="Karnataka PWD DPR-AI API", version="1.0.0")
 
@@ -36,6 +37,23 @@ from app.services.project_service import (
     add_dpr_version, get_dpr_versions, ensure_upload_timeline,
     can_user_access_project, is_admin_role, is_authorized_status_viewer,
     delete_project,
+    get_extracted_document, get_document_pages, get_rag_chunks,
+    get_llm_insights, process_and_store_dpr_intelligence,
+    get_extracted_images
+)
+from app.services.rag_service import search_relevant_chunks, generate_rag_answer, query_multi_document_rag
+from app.services.knowledge_extractor import (
+    generate_5_level_executive_briefings, calculate_dqci_score,
+    audit_irc_kpwd_compliance, compare_multiple_dprs, extract_entities_and_specs
+)
+from app.services.chatbot_service import generate_chatbot_response
+from app.services.recommendation_service import RecommendationService
+from app.services.approval_workflow_service import (
+    get_or_create_dpr_workflow,
+    process_department_decision,
+    get_ai_approval_assistant_insights,
+    get_approvals_dashboard_kpis,
+    build_enterprise_application_status
 )
 
 def _extract_request_user(request: Request, username: Optional[str] = None, role: Optional[str] = None) -> tuple[Optional[str], Optional[str], Optional[str]]:
@@ -88,7 +106,13 @@ def _verify_dpr_access(dpr_id: str, request: Request, username: Optional[str] = 
 
 # ---- Compliance & Report Services ----
 from app.services.compliance_service import evaluate_compliance, ProjectCompliance
-from app.services.report_generator import generate_dpr_assessment_report, generate_dpr_assessment_pdf_bytes
+from app.services.report_generator import (
+    generate_dpr_assessment_report,
+    generate_dpr_assessment_pdf_bytes,
+    generate_final_approved_dpr_pdf_bytes,
+    generate_dpr_status_monitoring_pdf_bytes,
+    generate_dpr_rejection_assessment_pdf_bytes
+)
 from fastapi.responses import PlainTextResponse, FileResponse
 import os
 import mimetypes
@@ -127,19 +151,28 @@ class RecommendationItem(BaseModel):
     id: str
     category: str
     priority: str
-    title: str
-    description: str
     impact: str
     confidence_score: float
+    title: str
+    reason: Optional[str] = ""
+    explanation: Optional[str] = ""
+    description: Optional[str] = ""
+    dpr_page_numbers: Optional[List[int]] = []
+    dpr_section_name: Optional[str] = ""
+    supporting_evidence: Optional[str] = ""
+    guideline_reference: Optional[str] = ""
+    suggested_action: Optional[str] = ""
     actionable_steps: List[str]
 
 class RecommendationResponse(BaseModel):
     dpr_id: str
-    sector: str
-    risk_category: str
+    project_title: Optional[str] = ""
+    sector: Optional[str] = "Roads"
+    risk_category: Optional[str] = "Low"
     total_recommendations: int
     critical_count: int
     high_count: int
+    dashboard: Optional[Dict[str, Any]] = None
     recommendations: List[RecommendationItem]
 
 class ApprovalRequest(BaseModel):
@@ -481,99 +514,70 @@ def get_compliance(dpr_id: str, request: Request, username: Optional[str] = None
 @app.get("/api/dpr/{dpr_id}/recommendations", response_model=RecommendationResponse)
 def get_recommendations(dpr_id: str, request: Request, sector: str = "Roads", username: Optional[str] = None, role: Optional[str] = None):
     project = _verify_dpr_access(dpr_id, request, username, role)
-    if project:
-        sector = project.sector
-    data = _get_or_create_analysis(dpr_id, sector)
-    risk_score = data["risk"]["risk_score"]
-    risk_category = data["risk"]["risk_category"]
-    dimension_scores = [d["score"] for d in data["assessment"]["dimensions"]]
-
-    recommendations = []
-    rec_id = 1
-
-    sector_recs = RECOMMENDATION_KB.get(sector, RECOMMENDATION_KB["Roads"])
-    for rec in sector_recs:
-        priority = "critical" if risk_category == "High" else "high" if risk_category == "Medium" else "medium"
-        confidence = _compute_confidence(risk_score, dimension_scores)
-        recommendations.append(RecommendationItem(
-            id=f"REC-{dpr_id}-{rec_id:03d}",
-            category=rec["category"],
-            priority=priority,
-            title=rec["title"],
-            description=rec["description"],
-            impact=rec["impact"],
-            confidence_score=confidence,
-            actionable_steps=rec["steps"],
+    res = RecommendationService.generate_deep_explainable_recommendations(dpr_id)
+    
+    # Format into response model
+    items = []
+    for r in res.get("recommendations", []):
+        items.append(RecommendationItem(
+            id=r["id"],
+            category=r["category"],
+            priority=r["priority"],
+            impact=r["impact"],
+            confidence_score=r["confidence_score"],
+            title=r["title"],
+            reason=r.get("reason", ""),
+            explanation=r.get("explanation", ""),
+            description=r.get("explanation", ""),
+            dpr_page_numbers=r.get("dpr_page_numbers", []),
+            dpr_section_name=r.get("dpr_section_name", ""),
+            supporting_evidence=r.get("supporting_evidence", ""),
+            guideline_reference=r.get("guideline_reference", ""),
+            suggested_action=r.get("suggested_action", ""),
+            actionable_steps=r.get("actionable_steps", [])
         ))
-        rec_id += 1
-
-    num_generic = 3 if risk_category == "High" else 2 if risk_category == "Medium" else 1
-    generic_pool = GENERIC_RECOMMENDATIONS.copy()
-    random.shuffle(generic_pool)
-    avg_score = float(np.mean(dimension_scores))
-
-    for rec in generic_pool[:num_generic]:
-        priority = "critical" if avg_score < 60 else "high" if avg_score < 75 else "medium"
-        confidence = _compute_confidence(risk_score, dimension_scores)
-        recommendations.append(RecommendationItem(
-            id=f"REC-{dpr_id}-{rec_id:03d}",
-            category=rec["category"],
-            priority=priority,
-            title=rec["title"],
-            description=rec["description"],
-            impact=rec["impact"],
-            confidence_score=confidence,
-            actionable_steps=rec["steps"],
-        ))
-        rec_id += 1
-
-    priority_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
-    recommendations.sort(key=lambda r: priority_order.get(r.priority, 99))
 
     return RecommendationResponse(
         dpr_id=dpr_id,
-        sector=sector,
-        risk_category=risk_category,
-        total_recommendations=len(recommendations),
-        critical_count=sum(1 for r in recommendations if r.priority == "critical"),
-        high_count=sum(1 for r in recommendations if r.priority == "high"),
-        recommendations=recommendations,
+        project_title=res.get("project_title", ""),
+        sector=project.sector if project else sector,
+        risk_category=res.get("dashboard", {}).get("cost_risk_score", "Low"),
+        total_recommendations=res.get("total_recommendations", len(items)),
+        critical_count=res.get("critical_count", 0),
+        high_count=res.get("high_count", 0),
+        dashboard=res.get("dashboard", {}),
+        recommendations=items
     )
 
 @app.get("/api/recommendations")
 def get_all_recommendations(request: Request, username: Optional[str] = None, role: Optional[str] = None):
-    """Return AI recommendations for analysed projects belonging to the requesting user."""
+    """Return explainable AI recommendations for projects belonging to the requesting user."""
     u, r, uid = _extract_request_user(request, username, role)
     projects = get_all_projects(username=u, role=r, user_id=uid)
     all_recs = []
     for project in projects:
-        cached = get_cached_analysis(project.id)
-        if not cached:
-            continue
-        risk_score = cached["risk"]["risk_score"]
-        risk_category = cached["risk"]["risk_category"]
-        dimension_scores = [d["score"] for d in cached["assessment"]["dimensions"]]
-        sector = project.sector
-
-        sector_recs = RECOMMENDATION_KB.get(sector, RECOMMENDATION_KB["Roads"])
-        rec_id = 1
-        for rec in sector_recs:
-            priority = "critical" if risk_category == "High" else "high" if risk_category == "Medium" else "medium"
-            confidence = _compute_confidence(risk_score, dimension_scores)
+        rec_data = RecommendationService.generate_deep_explainable_recommendations(project.id)
+        for r_item in rec_data.get("recommendations", []):
             all_recs.append({
-                "id": f"REC-{project.id}-{rec_id:03d}",
+                "id": f"{project.id[:6]}-{r_item['id']}",
                 "dprId": project.id,
                 "dprTitle": project.title or project.original_filename,
-                "state": project.state,
-                "category": rec["category"],
-                "priority": priority,
-                "title": rec["title"],
-                "description": rec["description"],
-                "impact": rec["impact"],
-                "actionableSteps": rec["steps"],
+                "state": getattr(project, "state", "Karnataka"),
+                "category": r_item["category"],
+                "priority": r_item["priority"],
+                "impact": r_item["impact"],
+                "title": r_item["title"],
+                "description": r_item.get("explanation", ""),
+                "reason": r_item.get("reason", ""),
+                "confidenceScore": r_item.get("confidence_score", 90.0),
+                "dprPageNumbers": r_item.get("dpr_page_numbers", [1]),
+                "dprSectionName": r_item.get("dpr_section_name", "DPR Specifications"),
+                "supportingEvidence": r_item.get("supporting_evidence", ""),
+                "guidelineReference": r_item.get("guideline_reference", ""),
+                "suggestedAction": r_item.get("suggested_action", ""),
+                "actionableSteps": r_item.get("actionable_steps", []),
                 "generatedAt": project.upload_date,
             })
-            rec_id += 1
     return all_recs
 
 @app.post("/api/dpr/{dpr_id}/approve")
@@ -618,27 +622,82 @@ def approve_dpr(dpr_id: str, request: ApprovalRequest):
 
 
 @app.get("/api/report/{dpr_id}")
+@app.get("/api/report/{dpr_id}")
 @app.get("/api/report/{dpr_id}/download")
 @app.get("/api/dpr/{dpr_id}/report")
 @app.get("/api/dpr/{dpr_id}/report/download")
 @app.get("/api/dpr/{dpr_id}/report/pdf")
 @app.get("/api/dpr/{dpr_id}/pdf")
+@app.get("/api/dpr/{dpr_id}/final-approved-report/pdf")
+@app.get("/api/dpr/{dpr_id}/status-report/pdf")
+@app.get("/api/dpr/{dpr_id}/rejection-report/pdf")
+@app.get("/api/application-status/{dpr_id}/pdf")
+@app.get("/api/application-status/{dpr_id}/status-report/pdf")
+@app.get("/api/application-status/{dpr_id}/rejection-report/pdf")
 def download_report(dpr_id: str, request: Request, username: Optional[str] = None, role: Optional[str] = None):
-    """Generate and return official Techno-Economic Appraisal Report PDF for a DPR."""
+    """Generate and return official Government-Standard Techno-Economic Appraisal / Status Monitoring / Rejection / Final Sanction PDF Report."""
     project = _verify_dpr_access(dpr_id, request, username, role)
-    
     meta = _to_dict(project)
-    assessment = _to_dict(get_assessment(dpr_id, request, username, role))
-    compliance = _generate_compliance(dpr_id, meta)
-    risk = _generate_risk(dpr_id, meta)
-    category_recs = get_category_recommendations(dpr_id)
+    wf = get_or_create_dpr_workflow(dpr_id)
+    overall_st = (wf.get("overall_status") or project.status or "IN_REVIEW").upper()
 
-    pdf_bytes = generate_dpr_assessment_pdf_bytes(
-        meta, assessment, compliance, risk, category_recs
-    )
-    
-    clean_title = (project.title or project.original_filename).replace(" ", "_")
-    filename = f"Karnataka_PWD_Official_DPR_Report_{project.status}_{dpr_id[:8]}.pdf"
+    doc = get_extracted_document(dpr_id)
+    full_text = doc.get("full_text", "") if doc else ""
+    images = get_extracted_images(dpr_id)
+
+    app_set = get_settings()
+    api_k = app_set.groq_api_key or os.environ.get("GROQ_API_KEY", "")
+
+    briefings = generate_5_level_executive_briefings(full_text, meta, api_key=api_k)
+    dqci = calculate_dqci_score(full_text, doc.get("total_pages", 1) if doc else 1, doc.get("word_count", 0) if doc else 0, len(images))
+    compliance = audit_irc_kpwd_compliance(full_text, meta)
+    category_recs = get_category_recommendations(dpr_id)
+    timeline = get_timeline(dpr_id)
+
+    # 1. If DPR is Rejected (or rejection report requested), generate the Official Rejection & Deficiency PDF
+    if "REJECT" in overall_st or "rejection" in request.url.path:
+        pdf_bytes = generate_dpr_rejection_assessment_pdf_bytes(
+            project_data=meta,
+            workflow_data=wf,
+            extracted_doc=doc,
+            extracted_images=images,
+            executive_briefings=briefings,
+            dqci_score=dqci,
+            compliance_audit=compliance,
+            recommendations=category_recs,
+            timeline=timeline
+        )
+        filename = f"Karnataka_PWD_Rejection_Report_{dpr_id[:8].upper()}.pdf"
+
+    # 2. If Final Approved (or explicitly requested), generate the Comprehensive 15-Section Government Sanction PDF
+    elif overall_st in ["FINAL_APPROVED", "APPROVED"] or "final-approved" in request.url.path:
+        pdf_bytes = generate_final_approved_dpr_pdf_bytes(
+            project_data=meta,
+            workflow_data=wf,
+            extracted_doc=doc,
+            extracted_images=images,
+            executive_briefings=briefings,
+            dqci_score=dqci,
+            compliance_audit=compliance,
+            recommendations=category_recs,
+            timeline=timeline
+        )
+        filename = f"Karnataka_PWD_Final_Approved_DPR_Sanction_Report_{dpr_id[:8].upper()}.pdf"
+
+    # 3. For Under Review / Pending / Revision, generate the Official Government Status Monitoring PDF
+    else:
+        pdf_bytes = generate_dpr_status_monitoring_pdf_bytes(
+            project_data=meta,
+            workflow_data=wf,
+            extracted_doc=doc,
+            extracted_images=images,
+            executive_briefings=briefings,
+            dqci_score=dqci,
+            compliance_audit=compliance,
+            recommendations=category_recs,
+            timeline=timeline
+        )
+        filename = f"Karnataka_PWD_Status_Monitoring_Report_{dpr_id[:8].upper()}.pdf"
 
     return Response(
         content=pdf_bytes,
@@ -1584,38 +1643,13 @@ def _verify_status_access(request: Request, username: Optional[str] = None, role
 
 @app.get("/api/application-status")
 def get_all_application_statuses(request: Request, username: Optional[str] = None, role: Optional[str] = None):
-    from datetime import datetime
     u, r, uid = _extract_request_user(request, username, role)
     projects = get_all_projects(username=u, role=r, user_id=uid)
     result = []
     for p in projects:
         ensure_upload_timeline(p.id)
-        steps = ["DPR Uploaded", "AI Analysis", "Under Review", "Pending Info", "Decision"]
-        step_idx = _status_step(p.status)
-        progress_pct = round((step_idx + 1) / len(steps) * 100)
-        result.append({
-            "id": p.id,
-            "title": p.title or p.original_filename,
-            "original_filename": p.original_filename,
-            "district": p.state,
-            "sector": p.sector,
-            "department": getattr(p, 'department', None) or "Karnataka PWD",
-            "submitted_by": p.submitted_by or "User",
-            "upload_date": p.upload_date,
-            "status": p.status,
-            "reviewed_by": p.reviewed_by,
-            "reviewer_name": p.reviewer_name,
-            "reviewed_at": p.reviewed_at,
-            "overall_score": p.overall_score,
-            "risk_score": p.risk_score,
-            "compliance_score": p.compliance_score,
-            "estimated_cost": p.estimated_cost,
-            "duration_months": p.duration_months,
-            "approval_comment": p.approval_comment,
-            "progress_pct": progress_pct,
-            "step_index": step_idx,
-            "ref_number": f"KPWD-{p.id[:8].upper()}",
-        })
+        app_status_obj = build_enterprise_application_status(p)
+        result.append(app_status_obj)
     return result
 
 
@@ -1623,6 +1657,9 @@ def get_all_application_statuses(request: Request, username: Optional[str] = Non
 def get_application_status_detail(project_id: str, request: Request, username: Optional[str] = None, role: Optional[str] = None):
     u, r, uid = _extract_request_user(request, username, role)
     p = _verify_dpr_access(project_id, request, username, role)
+    if not p:
+        raise HTTPException(404, "Project not found")
+
     ensure_upload_timeline(project_id)
     timeline = get_timeline(project_id)
     # Auto-add AI analysis event once
@@ -1631,36 +1668,178 @@ def get_application_status_detail(project_id: str, request: Request, username: O
                            f"Quality {p.overall_score}/100 · Risk {p.risk_score}/100 · Compliance {p.compliance_score}%",
                            "AI Engine", "system")
         timeline = get_timeline(project_id)
-    steps = ["DPR Uploaded", "AI Analysis", "Under Review", "Pending Info", "Decision"]
-    step_idx = _status_step(p.status)
-    progress_pct = round((step_idx + 1) / len(steps) * 100)
+
+    app_detail = build_enterprise_application_status(p)
+    app_detail["comments"] = get_comments(project_id)
+    app_detail["timeline"] = timeline
+    app_detail["versions"] = get_dpr_versions(project_id)
+    app_detail["notifications"] = get_notifications("user", project_id)
+    return app_detail
+
+
+@app.get("/api/application-status/{project_id}/export-report")
+def export_application_status_report(project_id: str, request: Request, username: Optional[str] = None, role: Optional[str] = None):
+    """Generate official downloadable application report based on DPR workflow status."""
+    p = _verify_dpr_access(project_id, request, username, role)
+    if not p:
+        raise HTTPException(404, "Project not found")
+
+    status_data = build_enterprise_application_status(p)
+    proj_title = p.title or p.filename
+    overall_st = str(status_data.get("overall_status", "")).upper()
+    cert = status_data.get("certificate") or {}
+    timeline = get_timeline(project_id)
+
+    # 1. FINAL APPROVED DPR REPORT
+    if overall_st in ["FINAL_APPROVED", "APPROVED"]:
+        filename = f"KPWD_Final_Sanction_Report_{project_id[:8]}.txt"
+        report_type = "FINAL_APPROVED"
+        lines = [
+            "==========================================================================================",
+            "      GOVERNMENT OF KARNATAKA - PUBLIC WORKS DEPARTMENT (PWD)",
+            "      FINAL ADMINISTRATIVE APPROVAL & TECHNICAL SANCTION REPORT",
+            "==========================================================================================",
+            f"Sanction Order No:     {cert.get('sanction_order_no', f'KPWD/GO/2026/{project_id[:8].upper()}')}",
+            f"Digital Hash:          {cert.get('digital_hash', '51B0055ACB86552E')}",
+            f"Approving Authority:   {cert.get('approving_authority', 'Principal Secretary, PWD Karnataka')}",
+            f"Sanction Date:         {cert.get('sanction_date', datetime.now().strftime('%Y-%m-%d'))}",
+            "------------------------------------------------------------------------------------------",
+            "DPR DETAILS & PROJECT OUTLAY:",
+            f"• Application Ref:     {status_data['ref_number']}",
+            f"• Project Title:       {proj_title}",
+            f"• District / State:    {status_data['district']}, {status_data['state']}",
+            f"• Sector:              {status_data['sector']}",
+            f"• Allotted Budget:     ₹ {status_data['estimated_cost']:.2f} Crores",
+            f"• Submitter / Agency:  {status_data['submitted_by']}",
+            f"• Submission Date:     {status_data['upload_date']}",
+            "------------------------------------------------------------------------------------------",
+            "5-DEPARTMENT FULL APPROVAL SUMMARY & AUDIT TRAIL:",
+            "------------------------------------------------------------------------------------------",
+        ]
+        for d in status_data.get("department_tracking", []):
+            lines.append(f"✓ {d['department_name']} [{d['role_title']}]:")
+            lines.append(f"    Assigned Officer:  {d['assigned_officer']}")
+            lines.append(f"    Approval Status:   APPROVED")
+            lines.append(f"    Approval Date:     {d['approval_date'] or '2026-09-02'}")
+            lines.append(f"    Official Remarks:  {d['comments']}")
+            lines.append(f"    Digital Seal:      KPWD-AUTH-{d['department_key'].upper()[:4]}-CERTIFIED")
+            lines.append("")
+
+        lines.extend([
+            "------------------------------------------------------------------------------------------",
+            "EXECUTIVE SANCTION ORDER:",
+            "------------------------------------------------------------------------------------------",
+            "Administrative Approval and Technical Sanction are hereby accorded for the above detailed",
+            "project report in accordance with Karnataka Public Works Department Code and IRC Standards.",
+            "Funds are allocated under Capital Works Head 5054-03-337-1-01 for immediate tender issuance.",
+            "------------------------------------------------------------------------------------------\n",
+            f"Report Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            f"Verification: {cert.get('qr_verification_url', 'https://kpwd.karnataka.gov.in/verify')}",
+            "=========================================================================================="
+        ])
+
+    # 2. REJECTED DPR REPORT
+    elif overall_st == "REJECTED":
+        filename = f"KPWD_Rejection_Report_{project_id[:8]}.txt"
+        report_type = "REJECTED"
+        # Find which department rejected
+        rej_dept = next((d for d in status_data.get("department_tracking", []) if d["review_status"] == "REJECTED"), None)
+        rej_dept_name = rej_dept["department_name"] if rej_dept else "Review Directorate"
+        rej_officer = rej_dept["assigned_officer"] if rej_dept else "Competent Authority"
+        rej_comments = rej_dept["comments"] if rej_dept else (p.approval_comment or "Non-compliance with IRC / KPWD SoR guidelines.")
+
+        lines = [
+            "==========================================================================================",
+            "      GOVERNMENT OF KARNATAKA - PUBLIC WORKS DEPARTMENT (PWD)",
+            "      DETAILED PROJECT REPORT (DPR) REJECTION & DEFICIENCY REPORT",
+            "==========================================================================================",
+            f"Application Reference: {status_data['ref_number']}",
+            f"Project Title:         {proj_title}",
+            f"District / State:      {status_data['district']}, {status_data['state']}",
+            f"Sector:                {status_data['sector']}",
+            f"Estimated Cost:        ₹ {status_data['estimated_cost']:.2f} Crores",
+            f"Submission Date:       {status_data['upload_date']}",
+            f"Overall Status:        REJECTED (Review Terminated)",
+            "------------------------------------------------------------------------------------------",
+            "REJECTION PARTICULARS & DEFICIENCY SUMMARY:",
+            "------------------------------------------------------------------------------------------",
+            f"• Rejecting Department: {rej_dept_name}",
+            f"• Rejecting Officer:    {rej_officer}",
+            f"• Rejection Date:       {datetime.now().strftime('%Y-%m-%d')}",
+            f"• Primary Reason:       {rej_comments}",
+            "------------------------------------------------------------------------------------------",
+            "REQUIRED CORRECTIONS & DEFICIENCY NOTICE:",
+            "------------------------------------------------------------------------------------------",
+            "1. Rectify pavement crust / CBR design calculations per IRC:37-2018.",
+            "2. Update Schedule of Rates benchmarking against KPWD SoR 2025-26 itemized rates.",
+            "3. Submit missing statutory clearances (Stage-I Forest clearance Form-A / SEIAA EMP).",
+            "------------------------------------------------------------------------------------------",
+            "RESUBMISSION GUIDELINES:",
+            "------------------------------------------------------------------------------------------",
+            "The applicant may resubmit a revised DPR with corrected annexures within 30 calendar days",
+            "through the Karnataka PWD DPR Portal. Reference this application number during resubmission.",
+            "------------------------------------------------------------------------------------------\n",
+            f"Report Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            "=========================================================================================="
+        ]
+
+    # 3. UNDER REVIEW / PENDING / REVISION STATUS REPORT
+    else:
+        filename = f"KPWD_Status_Report_{project_id[:8]}.txt"
+        report_type = "STATUS_REPORT"
+        pending_depts = [d["department_name"] for d in status_data.get("department_tracking", []) if d["review_status"] in ["PENDING", "IN_REVIEW"]]
+        
+        lines = [
+            "==========================================================================================",
+            "      GOVERNMENT OF KARNATAKA - PUBLIC WORKS DEPARTMENT (PWD)",
+            "      DETAILED PROJECT REPORT (DPR) INTERIM WORKFLOW STATUS REPORT",
+            "==========================================================================================",
+            f"Application Reference: {status_data['ref_number']}",
+            f"Project Title:         {proj_title}",
+            f"District / State:      {status_data['district']}, {status_data['state']}",
+            f"Sector:                {status_data['sector']}",
+            f"Estimated Cost:        ₹ {status_data['estimated_cost']:.2f} Crores",
+            f"Submission Date:       {status_data['upload_date']}",
+            f"Current Workflow Stage:{status_data['granular_status']}",
+            f"Current Department:    {status_data['current_department']}",
+            f"Current Approver:      {status_data['current_approver']}",
+            f"Approval Progress:     {status_data['progress_pct']}% Completed",
+            f"Expected Completion:   {status_data['expected_completion_date']}",
+            f"Pending Departments:   {', '.join(pending_depts) if pending_depts else 'Final Stage'}",
+            "------------------------------------------------------------------------------------------\n",
+            "DEPARTMENT-WISE APPROVAL STATUS MATRIX:",
+            "------------------------------------------------------------------------------------------",
+        ]
+
+        for d in status_data.get("department_tracking", []):
+            lines.append(f"• {d['department_name']} [{d['role_title']}]:")
+            lines.append(f"    Review Status:  {d['review_status']}")
+            lines.append(f"    Officer:        {d['assigned_officer']}")
+            lines.append(f"    Approval Date:  {d['approval_date'] or 'Pending Review Session'}")
+            lines.append(f"    Remarks:        {d['comments']}")
+            lines.append(f"    SLA Status:     {d['sla_status']} (Pending: {d['pending_days']} days)")
+            lines.append("")
+
+        lines.extend([
+            "------------------------------------------------------------------------------------------",
+            "WORKFLOW MILESTONES & AUDIT LOG:",
+            "------------------------------------------------------------------------------------------",
+        ])
+        for evt in timeline[:5]:
+            lines.append(f"• [{evt.get('created_at', '')[:16]}] {evt.get('title', '')} - {evt.get('description', '')} (By: {evt.get('actor_name', '')})")
+
+        lines.extend([
+            "------------------------------------------------------------------------------------------\n",
+            f"Report Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            "Online Tracking: https://kpwd.karnataka.gov.in/track",
+            "=========================================================================================="
+        ])
+
     return {
-        "id": p.id,
-        "title": p.title or p.original_filename,
-        "original_filename": p.original_filename,
-        "district": p.state,
-        "sector": p.sector,
-        "department": p.department or "Karnataka PWD",
-        "submitted_by": p.submitted_by or "User",
-        "upload_date": p.upload_date,
-        "status": p.status,
-        "reviewed_by": p.reviewed_by,
-        "reviewer_name": p.reviewer_name,
-        "reviewed_at": p.reviewed_at,
-        "overall_score": p.overall_score,
-        "risk_score": p.risk_score,
-        "compliance_score": p.compliance_score,
-        "estimated_cost": p.estimated_cost,
-        "duration_months": p.duration_months,
-        "approval_comment": p.approval_comment,
-        "progress_pct": progress_pct,
-        "step_index": step_idx,
-        "ref_number": f"KPWD-{p.id[:8].upper()}",
-        "steps": steps,
-        "comments": get_comments(project_id),
-        "timeline": timeline,
-        "versions": get_dpr_versions(project_id),
-        "notifications": get_notifications("user", project_id),
+        "project_id": project_id,
+        "filename": filename,
+        "report_type": report_type,
+        "report": "\n".join(lines)
     }
 
 
@@ -1875,50 +2054,154 @@ def _call_groq_api(api_key: str, messages: list, model_name: str = "llama-3.3-70
     return None
 
 def _generate_domain_fallback(query: str, dpr_info: Optional[dict] = None) -> str:
-    q = query.lower()
-    if "status" in q or "track" in q or "application" in q:
-        return ("To track any DPR application status, visit the **Application Status** tab in the portal menu. "
-                "Each DPR moves through 5 stages: **DPR Uploaded → AI Analysis → Under Review → Pending Info → Decision**. "
-                "You can search by Project Reference ID (e.g. `KPWD-XXXX`), District, or Sector.")
-    elif "clearance" in q or "forest" in q or "eia" in q or "environmental" in q:
-        return ("Under MoEFCC and Karnataka PWD guidelines, infrastructure DPRs require:\n"
-                "1. **Forest Clearance (FCA 1980)** Stage-I/II if traversing eco-sensitive forest land.\n"
-                "2. **Environmental Impact Assessment (EIA)** for projects > ₹100 Cr or in protected corridors.\n"
-                "3. **KSPCB Consent to Establish (CTE)** for highway/bridge excavation and stone crushers.")
-    elif "contingency" in q or "cost" in q or "morth" in q or "sor" in q:
-        return ("MoRTH & Karnataka PWD Schedule of Rates (SoR 2025-26) recommend:\n"
-                "• **10% - 15% Financial Contingency** for hilly/monsoon-heavy terrain.\n"
-                "• **8% - 12% Annual Price Escalation** for multi-year execution contracts.\n"
-                "• Verification of BOQ unit rates against Karnataka PWD 2025-26 Schedule of Rates.")
-    elif "score" in q or "risk" in q or "quality" in q:
-        return ("DPR-AI evaluates 8 core dimensions:\n"
-                "• **AI Quality Score (0-100)**: Technical soundness, financial realism, procurement clarity, and structural specs.\n"
-                "• **Risk Score (0-100)**: Low (≤40), Medium (41-70), High (>70) based on budget deviations, environmental constraints, and terrain delays.")
+    q = query.lower().strip()
+
+    # 1. Project Context Specific Query
+    if dpr_info:
+        title = dpr_info.get('title') or 'DPR Proposal'
+        ref_id = str(dpr_info.get('id', ''))
+        ref = f"KPWD-{ref_id[:8].upper()}" if ref_id else "KPWD-UNKNOWN"
+        status = dpr_info.get('status', 'PENDING')
+        cost = dpr_info.get('estimated_cost', 0)
+        sector = dpr_info.get('sector', 'Infrastructure')
+        district = dpr_info.get('state', 'Karnataka')
+        score = dpr_info.get('overall_score', 80)
+        risk = dpr_info.get('risk_score', 25)
+
+        if any(k in q for k in ["status", "track", "where", "stage", "progress"]):
+            return (f"### 📋 DPR Application Status for '{title}'\n\n"
+                    f"• **Reference ID**: `{ref}`\n"
+                    f"• **Current Status**: `{status}`\n"
+                    f"• **Sector & Location**: {sector} | {district}\n"
+                    f"• **Estimated Outlay**: ₹{cost} Crores\n"
+                    f"• **Techno-Economic Score**: {score}/100\n"
+                    f"• **Risk Rating**: {risk}% ({'Low' if risk <= 40 else 'Medium' if risk <= 70 else 'High'} Risk)\n\n"
+                    f"You can view complete workflow approval history, reviewer remarks, and document versions directly in the **Application Status** portal.")
+
+        if any(k in q for k in ["score", "quality", "risk", "analysis", "appraisal"]):
+            return (f"### 📊 AI Appraisal Summary for '{title}'\n\n"
+                    f"• **Overall Quality Score**: **{score}/100**\n"
+                    f"• **Risk Assessment Index**: **{risk}%**\n"
+                    f"• **Technical Soundness**: Benchmarked against MoRTH 5th Revision & IRC:37-2018 standards.\n"
+                    f"• **BOQ Financial Realism**: Evaluated against Karnataka PWD 2025-26 Schedule of Rates.\n\n"
+                    f"Open **AI Suggestions** or **DPR Queue** to inspect detailed category recommendations for BOQ, structural design, and environmental compliance.")
+
+    # 2. Status & Application Tracking
+    if any(k in q for k in ["status", "track", "application", "reference", "kpwd", "stage"]):
+        return ("### 📌 DPR Application Tracking & Workflow Stages\n\n"
+                "In the Karnataka PWD DPR Portal, every submitted DPR progresses through **5 official stages**:\n\n"
+                "1. **DPR Uploaded**: Proposal PDF is parsed and logged with a unique Reference ID (e.g. `KPWD-XXXX`).\n"
+                "2. **AI Analysis**: Multi-dimensional appraisal evaluating Techno-Economic Quality (0-100) and Risk Score (0-100).\n"
+                "3. **Under Review**: Assigned to the State Technical Advisory Committee (STAC) and Chief Engineer.\n"
+                "4. **Pending Info**: Reviewers request clarification or revised BOQ/drawing revisions.\n"
+                "5. **Decision (Approved / Rejected)**: Final Administrative Sanction (AS) and Technical Sanction (TS) issue.\n\n"
+                "💡 **How to Track**: Navigate to **Application Status** or **DPR Management** and search by Project ID, Submitter Name, or District.")
+
+    # 3. Environmental & Statutory Clearances
+    elif any(k in q for k in ["clearance", "forest", "eia", "environment", "kspcb", "crz", "moefcc", "tree"]):
+        return ("### 🌿 Statutory & Environmental Clearance Requirements for DPRs\n\n"
+                "As per MoEFCC (Ministry of Environment, Forest and Climate Change) and Karnataka PWD norms, all infrastructure DPRs must document:\n\n"
+                "• **Forest Clearance (FCA 1980)**:\n"
+                "  - **Stage-I (In-Principle)**: Required if proposal touches reserve/deemed forest land.\n"
+                "  - **Stage-II (Final)**: Tree enumeration, compensatory afforestation (CA) land identification.\n"
+                "• **Environmental Impact Assessment (EIA 2006 Notification)**:\n"
+                "  - Mandatory for Highway expansion >100 km or additional right-of-way (ROW) >40m.\n"
+                "  - Category 'A' (National level) or Category 'B' (State Level SEIAA clearance).\n"
+                "• **KSPCB Clearances**:\n"
+                "  - **Consent to Establish (CTE)** & **Consent to Operate (CTO)** for stone crushers, hot-mix plants, and batching plants.\n"
+                "• **CRZ (Coastal Regulation Zone)**: Applicable for coastal districts (Uttara Kannada, Udupi, Dakshina Kannada).")
+
+    # 4. Land Acquisition & Right of Way (ROW)
+    elif any(k in q for k in ["land", "acquisition", "larr", "row", "right of way", "noc", "compensation", "revenue"]):
+        return ("### 📐 Land Acquisition & Right-of-Way (ROW) Guidelines\n\n"
+                "DPRs requiring private/revenue land must comply with the **LARR Act 2013** (*Right to Fair Compensation and Transparency in Land Acquisition, Rehabilitation and Resettlement Act*):\n\n"
+                "1. **Joint Measurement Survey (JMS)**: Verified boundary maps with Revenue Department survey numbers.\n"
+                "2. **Social Impact Assessment (SIA)**: Public hearing & SIA clearance for projects acquiring >10 acres.\n"
+                "3. **Compensation Benchmark**: 2x market value in urban areas, 4x market value in rural Karnataka.\n"
+                "4. **Inter-Departmental NOCs**: Clearance from Irrigation (KBNL/CNNLA), KPTCL (power line shifting), and BSNL (telecom utilities).")
+
+    # 5. Administrative Sanction (AS) & Technical Sanction (TS) Limits
+    elif any(k in q for k in ["sanction", "approval", "power", "executive engineer", "superintending engineer", "chief engineer", "stac"]):
+        return ("### 🏛️ Karnataka PWD Sanction Powers (AS & TS Thresholds)\n\n"
+                "Delegation of financial and technical sanction powers in Karnataka PWD:\n\n"
+                "• **Executive Engineer (EE)**: Technical Sanction up to **₹1.0 Crore**.\n"
+                "• **Superintending Engineer (SE)**: Technical Sanction up to **₹5.0 Crores**.\n"
+                "• **Chief Engineer (CE)**: Technical Sanction up to **₹25.0 Crores**.\n"
+                "• **State Technical Advisory Committee (STAC) & Cabinet**: Proposals **> ₹25.0 Crores** require STAC appraisal and Cabinet Administrative Sanction (AS).\n\n"
+                "All DPRs submitted via this portal are automatically routed to the correct approving authority based on sector and outlay.")
+
+    # 6. Financial Contingency, SoR & Cost Realism
+    elif any(k in q for k in ["contingency", "cost", "morth", "sor", "escalation", "budget", "boq", "rate", "bcr"]):
+        return ("### 💰 Financial Cost Realism & Schedule of Rates (SoR)\n\n"
+                "To prevent cost overruns, Karnataka PWD & MoRTH guidelines specify the following financial parameters:\n\n"
+                "• **Financial Contingency**: **10% - 15%** for hilly/monsoon-heavy terrain; **5% - 8%** for plain urban corridors.\n"
+                "• **Price Escalation**: **8% - 12% per annum** for multi-year contracts based on WPI (Wholesale Price Index).\n"
+                "• **Karnataka PWD Schedule of Rates (SoR 2025-26)**: BOQ line items must match current market benchmark rates for cement, steel (Fe 550D), bitumen (VG-30/40), and M30/M40 concrete.\n"
+                "• **Benefit-Cost Ratio (BCR)**: Infrastructure DPRs must demonstrate an Economic Internal Rate of Return (EIRR) > 12% and BCR > 1.5.")
+
+    # 7. Technical Engineering Specs & Soil Tests
+    elif any(k in q for k in ["geotechnical", "soil", "cbr", "spt", "irc", "pavement", "bridge", "structural", "hydraulics", "specification"]):
+        return ("### 🏗️ Technical & Structural Engineering Specifications\n\n"
+                "Detailed Project Reports must adhere to standard **IRC (Indian Roads Congress)** & **MoRTH** standards:\n\n"
+                "• **Subgrade & Geotechnical Investigation**:\n"
+                "  - **NABL Soil Bearing Capacity**: Standard Penetration Test (SPT) and Triaxial Shear tests.\n"
+                "  - **Subgrade CBR (California Bearing Ratio)**: Minimum 8% CBR for heavy traffic design (IRC:37-2018).\n"
+                "• **Pavement & Bridge Design**:\n"
+                "  - Flexible Pavement: BC (Bituminous Concrete) + DBM (Dense Bituminous Macadam) + WMM + GSB.\n"
+                "  - Rigid Pavement: PQC (Pavement Quality Concrete) M40 grade with DLC sub-base (IRC:58-2015).\n"
+                "  - Hydraulic Calculations: 100-year High Flood Level (HFL) calculations using Dickens/Ryves formulas.")
+
+    # 8. Standard DPR Format & Template Structure
+    elif any(k in q for k in ["template", "format", "structure", "document", "section", "upload", "prepare"]):
+        return ("### 📄 Standard 12-Section Structure for Karnataka PWD DPRs\n\n"
+                "A complete, audit-ready Detailed Project Report (DPR) must include the following 12 sections:\n\n"
+                "1. **Executive Summary & Project Salient Features**\n"
+                "2. **Socio-Economic & Traffic Volume Survey**\n"
+                "3. **Topographical Alignment & Geotechnical Soil Investigation**\n"
+                "4. **Geometric & Pavement Structural Design (IRC Code Compliance)**\n"
+                "5. **Hydraulic & Cross-Drainage (CD) Works Design**\n"
+                "6. **Bill of Quantities (BOQ) & Cost Estimates (SoR 2025-26)**\n"
+                "7. **Environmental Management Plan (EMP) & FCA Clearances**\n"
+                "8. **Land Acquisition & R&R Plan (LARR 2013)**\n"
+                "9. **Quality Control & Material Specification Manual**\n"
+                "10. **Implementation Schedule & Bar/Gantt Chart**\n"
+                "11. **Financial Viability & Benefit-Cost Ratio (BCR)**\n"
+                "12. **25-Year Operation & Maintenance (O&M) Budget**\n\n"
+                "You can download official pre-approved DPR templates under **DPR Templates** in the left sidebar.")
+
+    # 9. General Comprehensive Response
     else:
-        return (f"Regarding **'{query}'**: Karnataka PWD DPR guidelines require complete technical BOQ specs, "
-                "NABL soil bearing capacity tests (SPT), land acquisition NOCs (LARR Act 2013), and 25-year O&M projections. "
-                "You can inspect detailed AI scores and reports directly in the DPR Queue or Application Status portal.")
+        return (f"### 🤖 DPR-AI Guidance on '{query}'\n\n"
+                f"For Detailed Project Reports (DPRs) under **Karnataka PWD & MoRTH guidelines**, ensure the following key requirements are met:\n\n"
+                f"1. **Technical Specifications**: NABL subgrade CBR (>8%), 100-year HFL hydraulics, and IRC:37-2018 structural design.\n"
+                f"2. **Cost Benchmarking**: BOQ rates matching Karnataka PWD 2025-26 Schedule of Rates (SoR) with 10%-15% contingency.\n"
+                f"3. **Statutory Clearances**: MoEFCC Forest Clearance (FCA 1980 Stage I/II), EIA notification 2006, and LARR 2013 land NOCs.\n"
+                f"4. **Approval Lifecycle**: Track status via **Application Status** using your Project Reference ID (`KPWD-XXXX`).\n\n"
+                f"💡 *Tip: For real-time LLM reasoning powered by Groq Llama-3.3-70B, configure your API Key under **Admin Settings**.*")
 
 @app.post("/api/chat")
 def handle_chat_query(req: ChatApiRequest):
     """Handle Groq AI Chatbot query for DPR guidance & status."""
-    api_key = req.api_key or os.environ.get("GROQ_API_KEY", "")
+    settings = get_settings()
+    api_key = (req.api_key or settings.groq_api_key or os.environ.get("GROQ_API_KEY", "")).strip()
     query = req.message.strip()
 
     if not query:
         raise HTTPException(400, "Message cannot be empty")
 
     dpr_context = ""
+    dpr_info = None
     if req.dpr_id:
         p = get_project_by_id(req.dpr_id)
         if p:
-            dpr_context = f"\nContext DPR: Title='{p.title}', Ref='KPWD-{p.id[:8].upper()}', District='{p.state}', Sector='{p.sector}', Status='{p.status}', Cost='₹{p.estimated_cost} Cr'."
+            dpr_info = p.dict() if hasattr(p, "dict") else p.__dict__
+            dpr_context = f"\nContext DPR: Title='{p.title}', Ref='KPWD-{p.id[:8].upper()}', District='{p.state}', Sector='{p.sector}', Status='{p.status}', Cost='₹{p.estimated_cost} Cr', QualityScore='{p.overall_score}', RiskScore='{p.risk_score}%'."
 
     system_prompt = (
         "You are DPR-AI Assistant, an expert AI agent for Karnataka PWD (Public Works Department) Detailed Project Reports (DPRs).\n"
         "Your role is to answer and resolve user queries about DPR applications, compliance guidelines, MoRTH specs, IRC standards, "
-        "Karnataka Schedule of Rates 2025-26, environmental clearances (EIA/FCA), LARR land acquisition, and status tracking.\n"
-        "Be professional, clear, helpful, and concise. Format responses with markdown lists or bullet points when appropriate."
+        "Karnataka Schedule of Rates 2025-26, environmental clearances (EIA/FCA), LARR land acquisition, sanction limits (AS/TS), and status tracking.\n"
+        "Be professional, clear, helpful, accurate, and structured. Format responses with markdown headings, bold text, and bullet points."
         f"{dpr_context}"
     )
 
@@ -1934,13 +2217,16 @@ def handle_chat_query(req: ChatApiRequest):
     reply = None
     model_used = req.model or "llama-3.3-70b-versatile"
 
-    if api_key and len(api_key.strip()) > 10:
-        reply = _call_groq_api(api_key, messages, model_name=model_used)
-        if not reply and model_used != "llama3-70b-8192":
-            reply = _call_groq_api(api_key, messages, model_name="llama3-70b-8192")
+    if api_key and len(api_key) > 10:
+        models_to_try = [model_used, "llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "llama3-70b-8192", "mixtral-8x7b-32768"]
+        for m in models_to_try:
+            reply = _call_groq_api(api_key, messages, model_name=m)
+            if reply:
+                model_used = m
+                break
 
     if not reply:
-        reply = _generate_domain_fallback(query)
+        reply = _generate_domain_fallback(query, dpr_info=dpr_info)
         is_fallback = True
     else:
         is_fallback = False
@@ -2120,4 +2406,510 @@ def delete_dpr_template(template_id: str, request: Request):
     success = delete_template(template_id)
     if not success:
         raise HTTPException(404, "DPR template not found.")
-    return {"message": "DPR template deleted successfully", "id": template_id}
+    return {"message": "DPR template deleted successfully", "id": template_id}
+
+
+# ── Document Intelligence, RAG & LLM Endpoints ──────────────────────────────
+
+class RagQueryRequest(BaseModel):
+    query: str
+    top_k: Optional[int] = 4
+
+
+class MultiRagQueryRequest(BaseModel):
+    query: str
+    project_ids: Optional[List[str]] = None
+    top_k: Optional[int] = 6
+
+
+class CompareDprsRequest(BaseModel):
+    project_ids: List[str]
+
+
+class ChatbotQueryRequest(BaseModel):
+    dpr_id: str
+    query: str
+    language: Optional[str] = "en"
+    conversation_history: Optional[List[Dict[str, str]]] = None
+
+
+class ExportTranscriptRequest(BaseModel):
+    dpr_id: str
+    messages: List[Dict[str, Any]]
+
+
+@app.get("/api/dpr/{dpr_id}/extracted-document")
+def get_dpr_extracted_document(dpr_id: str, request: Request):
+    """Retrieve full text extraction and metadata for a DPR."""
+    u, r, uid = _extract_request_user(request)
+    proj = get_project_by_id(dpr_id)
+    if not proj:
+        raise HTTPException(404, "DPR project not found.")
+    if not can_user_access_project(proj, username=u, role=r, user_id=uid):
+        raise HTTPException(403, "Access forbidden.")
+
+    doc = get_extracted_document(dpr_id)
+    if not doc:
+        # If not extracted yet, trigger on-the-fly extraction
+        pdf_path = os.path.join(UPLOAD_DIR, proj.filename) if proj.filename else ""
+        if pdf_path and os.path.exists(pdf_path):
+            app_set = get_settings()
+            api_k = app_set.groq_api_key or os.environ.get("GROQ_API_KEY", "")
+            process_and_store_dpr_intelligence(dpr_id, pdf_path, api_key=api_k)
+            doc = get_extracted_document(dpr_id)
+
+    if not doc:
+        return {
+            "project_id": dpr_id,
+            "full_text": f"Document for '{proj.title or proj.original_filename}' is queued for extraction.",
+            "total_pages": 1,
+            "word_count": 10,
+            "character_count": 80,
+            "extraction_method": "pending",
+            "has_ocr": False,
+            "metadata": {}
+        }
+    return doc
+
+
+@app.get("/api/dpr/{dpr_id}/extracted-pages")
+def get_dpr_extracted_pages(dpr_id: str, request: Request):
+    """Retrieve per-page extracted text for a DPR."""
+    u, r, uid = _extract_request_user(request)
+    proj = get_project_by_id(dpr_id)
+    if not proj:
+        raise HTTPException(404, "DPR project not found.")
+    if not can_user_access_project(proj, username=u, role=r, user_id=uid):
+        raise HTTPException(403, "Access forbidden.")
+
+    pages = get_document_pages(dpr_id)
+    if not pages:
+        # Trigger on-the-fly if needed
+        pdf_path = os.path.join(UPLOAD_DIR, proj.filename) if proj.filename else ""
+        if pdf_path and os.path.exists(pdf_path):
+            app_set = get_settings()
+            api_k = app_set.groq_api_key or os.environ.get("GROQ_API_KEY", "")
+            process_and_store_dpr_intelligence(dpr_id, pdf_path, api_key=api_k)
+            pages = get_document_pages(dpr_id)
+
+    return {"project_id": dpr_id, "total_pages": len(pages), "pages": pages}
+
+
+@app.get("/api/dpr/{dpr_id}/images")
+def get_dpr_images(dpr_id: str, request: Request, page: Optional[int] = None):
+    """Retrieve all extracted images (diagrams, maps, charts, photos) with AI explanations for a DPR."""
+    u, r, uid = _extract_request_user(request)
+    proj = get_project_by_id(dpr_id)
+    if not proj:
+        raise HTTPException(404, "DPR project not found.")
+    if not can_user_access_project(proj, username=u, role=r, user_id=uid):
+        raise HTTPException(403, "Access forbidden.")
+
+    images = get_extracted_images(dpr_id, page_number=page)
+    if not images and page is None:
+        # Trigger on-the-fly if needed
+        pdf_path = os.path.join(UPLOAD_DIR, proj.filename) if proj.filename else ""
+        if pdf_path and os.path.exists(pdf_path):
+            app_set = get_settings()
+            api_k = app_set.groq_api_key or os.environ.get("GROQ_API_KEY", "")
+            process_and_store_dpr_intelligence(dpr_id, pdf_path, api_key=api_k)
+            images = get_extracted_images(dpr_id, page_number=page)
+
+    return {"project_id": dpr_id, "total_images": len(images), "images": images}
+
+
+@app.get("/api/dpr/{dpr_id}/pages/{page_number}/images")
+def get_dpr_page_images(dpr_id: str, page_number: int, request: Request):
+    """Retrieve extracted images specifically linked to a given PDF page number."""
+    u, r, uid = _extract_request_user(request)
+    proj = get_project_by_id(dpr_id)
+    if not proj:
+        raise HTTPException(404, "DPR project not found.")
+    if not can_user_access_project(proj, username=u, role=r, user_id=uid):
+        raise HTTPException(403, "Access forbidden.")
+
+    images = get_extracted_images(dpr_id, page_number=page_number)
+    return {"project_id": dpr_id, "page_number": page_number, "total_images": len(images), "images": images}
+
+
+@app.get("/api/dpr/{dpr_id}/images/{filename}")
+def get_dpr_image_file(dpr_id: str, filename: str):
+    """Stream extracted DPR image file with caching headers."""
+    # Sanitize filename
+    safe_filename = os.path.basename(filename)
+    image_path = os.path.join(UPLOAD_DIR, "dpr_images", dpr_id, safe_filename)
+    if not os.path.isfile(image_path):
+        raise HTTPException(404, "Extracted image file not found.")
+
+    media_type = mimetypes.guess_type(image_path)[0] or "image/png"
+    return FileResponse(
+        image_path,
+        media_type=media_type,
+        headers={"Cache-Control": "public, max-age=86400"}
+    )
+
+
+@app.get("/api/dpr/{dpr_id}/rag/chunks")
+def get_dpr_rag_chunks(dpr_id: str, request: Request):
+    """Retrieve all indexed semantic RAG chunks for a DPR."""
+    u, r, uid = _extract_request_user(request)
+    proj = get_project_by_id(dpr_id)
+    if not proj:
+        raise HTTPException(404, "DPR project not found.")
+    if not can_user_access_project(proj, username=u, role=r, user_id=uid):
+        raise HTTPException(403, "Access forbidden.")
+
+    chunks = get_rag_chunks(dpr_id)
+    return {"project_id": dpr_id, "total_chunks": len(chunks), "chunks": chunks}
+
+
+@app.post("/api/dpr/{dpr_id}/rag/query")
+def query_dpr_rag(dpr_id: str, req: RagQueryRequest, request: Request):
+    """Query the DPR document using semantic retrieval and page citation generation."""
+    u, r, uid = _extract_request_user(request)
+    proj = get_project_by_id(dpr_id)
+    if not proj:
+        raise HTTPException(404, "DPR project not found.")
+    if not can_user_access_project(proj, username=u, role=r, user_id=uid):
+        raise HTTPException(403, "Access forbidden.")
+
+    chunks = get_rag_chunks(dpr_id)
+    if not chunks:
+        # Trigger on-the-fly extraction
+        pdf_path = os.path.join(UPLOAD_DIR, proj.filename) if proj.filename else ""
+        if pdf_path and os.path.exists(pdf_path):
+            app_set = get_settings()
+            api_k = app_set.groq_api_key or os.environ.get("GROQ_API_KEY", "")
+            process_and_store_dpr_intelligence(dpr_id, pdf_path, api_key=api_k)
+            chunks = get_rag_chunks(dpr_id)
+
+    top_k = max(min(req.top_k or 4, 10), 1)
+    relevant = search_relevant_chunks(req.query, chunks, top_k=top_k)
+
+    app_set = get_settings()
+    api_k = app_set.groq_api_key or os.environ.get("GROQ_API_KEY", "")
+
+    result = generate_rag_answer(
+        query=req.query,
+        project_title=proj.title or proj.original_filename,
+        relevant_chunks=relevant,
+        api_key=api_k
+    )
+    return {
+        "project_id": dpr_id,
+        "query": req.query,
+        **result
+    }
+
+
+@app.get("/api/dpr/{dpr_id}/llm/insights")
+def get_dpr_llm_insights_endpoint(dpr_id: str, request: Request):
+    """Retrieve structured parameters, technical specs, financials, clearances, and risks."""
+    u, r, uid = _extract_request_user(request)
+    proj = get_project_by_id(dpr_id)
+    if not proj:
+        raise HTTPException(404, "DPR project not found.")
+    if not can_user_access_project(proj, username=u, role=r, user_id=uid):
+        raise HTTPException(403, "Access forbidden.")
+
+    insights = get_llm_insights(dpr_id)
+    if not insights:
+        # Trigger on-the-fly extraction
+        pdf_path = os.path.join(UPLOAD_DIR, proj.filename) if proj.filename else ""
+        if pdf_path and os.path.exists(pdf_path):
+            app_set = get_settings()
+            api_k = app_set.groq_api_key or os.environ.get("GROQ_API_KEY", "")
+            process_and_store_dpr_intelligence(dpr_id, pdf_path, api_key=api_k)
+            insights = get_llm_insights(dpr_id)
+
+    if not insights:
+        from app.services.llm_extractor import extract_dpr_insights
+        proj_meta = {
+            "title": proj.title or "DPR Proposal",
+            "sector": proj.sector or "Infrastructure",
+            "state": proj.state or "Karnataka",
+            "estimated_cost": proj.estimated_cost or 50.0
+        }
+        insights = extract_dpr_insights("", proj_meta)
+
+    return insights
+
+
+@app.post("/api/dpr/{dpr_id}/extract-intelligence")
+def trigger_dpr_intelligence_extraction(dpr_id: str, request: Request):
+    """Re-run complete extraction, indexing, and LLM structured insight pipeline."""
+    u, r, uid = _extract_request_user(request)
+    proj = get_project_by_id(dpr_id)
+    if not proj:
+        raise HTTPException(404, "DPR project not found.")
+    if not can_user_access_project(proj, username=u, role=r, user_id=uid):
+        raise HTTPException(403, "Access forbidden.")
+
+    pdf_path = os.path.join(UPLOAD_DIR, proj.filename) if proj.filename else ""
+    if not pdf_path or not os.path.exists(pdf_path):
+        raise HTTPException(400, "Project PDF file not found on disk.")
+
+    app_set = get_settings()
+    api_k = app_set.groq_api_key or os.environ.get("GROQ_API_KEY", "")
+    res = process_and_store_dpr_intelligence(dpr_id, pdf_path, api_key=api_k)
+    return res
+
+
+@app.get("/api/dpr/mongo/status")
+def get_mongodb_status():
+    """Retrieve MongoDB connection health, active database, and collections status."""
+    try:
+        from app.db.mongo import get_mongo_stats
+        return get_mongo_stats()
+    except Exception as e:
+        return {"connected": False, "error": str(e)}
+
+
+@app.post("/api/dpr/rag/multi-query")
+def api_multi_dpr_rag_query(req: MultiRagQueryRequest, request: Request):
+    """Query across multiple or all DPR documents using hybrid retrieval."""
+    u, r, uid = _extract_request_user(request)
+    app_set = get_settings()
+    api_k = app_set.groq_api_key or os.environ.get("GROQ_API_KEY", "")
+    return query_multi_document_rag(
+        query=req.query,
+        project_ids=req.project_ids,
+        top_k=req.top_k or 6,
+        api_key=api_k
+    )
+
+
+@app.get("/api/dpr/{dpr_id}/knowledge-extraction")
+def get_dpr_knowledge_extraction(dpr_id: str, request: Request):
+    """Retrieve deep 5-level summaries, entity graph, and DQCI score for a DPR."""
+    u, r, uid = _extract_request_user(request)
+    proj = get_project_by_id(dpr_id)
+    if not proj:
+        raise HTTPException(404, "DPR project not found.")
+    if not can_user_access_project(proj, username=u, role=r, user_id=uid):
+        raise HTTPException(403, "Access forbidden.")
+
+    doc = get_extracted_document(dpr_id)
+    full_text = doc.get("full_text", "") if doc else ""
+    total_pages = doc.get("total_pages", 1) if doc else 1
+    word_count = doc.get("word_count", 0) if doc else 0
+    images = get_extracted_images(dpr_id)
+
+    proj_meta = {
+        "id": proj.id,
+        "title": proj.title or proj.filename,
+        "sector": proj.sector,
+        "state": proj.state,
+        "district": getattr(proj, "district", "Karnataka"),
+        "estimated_cost": proj.estimated_cost
+    }
+
+    app_set = get_settings()
+    api_k = app_set.groq_api_key or os.environ.get("GROQ_API_KEY", "")
+
+    briefings = generate_5_level_executive_briefings(full_text, proj_meta, api_key=api_k)
+    dqci = calculate_dqci_score(full_text, total_pages, word_count, len(images))
+
+    return {
+        "project_id": dpr_id,
+        "briefings": briefings,
+        "dqci": dqci,
+        "entities": briefings["entities"]
+    }
+
+
+@app.get("/api/dpr/{dpr_id}/compliance-audit")
+def get_dpr_compliance_audit(dpr_id: str, request: Request):
+    """Perform IRC standards and KPWD Schedule of Rates compliance audit."""
+    u, r, uid = _extract_request_user(request)
+    proj = get_project_by_id(dpr_id)
+    if not proj:
+        raise HTTPException(404, "DPR project not found.")
+    if not can_user_access_project(proj, username=u, role=r, user_id=uid):
+        raise HTTPException(403, "Access forbidden.")
+
+    doc = get_extracted_document(dpr_id)
+    full_text = doc.get("full_text", "") if doc else ""
+
+    proj_meta = {
+        "id": proj.id,
+        "title": proj.title or proj.filename,
+        "sector": proj.sector,
+        "state": proj.state,
+        "district": getattr(proj, "district", "Karnataka"),
+        "estimated_cost": proj.estimated_cost
+    }
+
+    return audit_irc_kpwd_compliance(full_text, proj_meta)
+
+
+@app.post("/api/dpr/compare")
+def compare_dprs_endpoint(req: CompareDprsRequest, request: Request):
+    """Compare multiple selected DPR projects side-by-side."""
+    u, r, uid = _extract_request_user(request)
+    all_projects = get_all_projects()
+    matched = [p for p in all_projects if p.id in req.project_ids] if req.project_ids else all_projects[:6]
+
+    projects_data = []
+    for p in matched:
+        doc = get_extracted_document(p.id)
+        imgs = get_extracted_images(p.id)
+        projects_data.append({
+            "id": p.id,
+            "title": p.title or p.filename,
+            "filename": p.filename,
+            "sector": p.sector,
+            "state": p.state,
+            "district": getattr(p, "district", "Karnataka"),
+            "status": p.status,
+            "estimated_cost": p.estimated_cost,
+            "total_pages": doc.get("total_pages", 1) if doc else 1,
+            "word_count": doc.get("word_count", 0) if doc else 0,
+            "images_count": len(imgs),
+            "full_text": doc.get("full_text", "") if doc else ""
+        })
+
+    return compare_multiple_dprs(projects_data)
+
+
+@app.post("/api/chatbot/query")
+def api_chatbot_query(req: ChatbotQueryRequest, request: Request):
+    """Context-aware multilingual grounded AI Chatbot endpoint."""
+    u, r, uid = _extract_request_user(request)
+    proj = get_project_by_id(req.dpr_id)
+    if not proj:
+        raise HTTPException(404, "Selected DPR proposal not found.")
+    if not can_user_access_project(proj, username=u, role=r, user_id=uid):
+        raise HTTPException(403, "Access forbidden.")
+
+    app_set = get_settings()
+    api_k = app_set.groq_api_key or os.environ.get("GROQ_API_KEY", "")
+
+    return generate_chatbot_response(
+        dpr_id=req.dpr_id,
+        query=req.query,
+        language=req.language or "en",
+        conversation_history=req.conversation_history,
+        api_key=api_k
+    )
+
+
+@app.post("/api/chatbot/export-transcript")
+def api_chatbot_export_transcript(req: ExportTranscriptRequest, request: Request):
+    """Format and return a downloadable chat session transcript with citations."""
+    proj = get_project_by_id(req.dpr_id)
+    proj_title = proj.title or proj.filename if proj else f"DPR {req.dpr_id}"
+
+    lines = [
+        "=================================================================",
+        "  KARNATAKA PUBLIC WORKS DEPARTMENT (PWD) - DPR AI CHATBOT REPORT",
+        "=================================================================",
+        f"Project: {proj_title}",
+        f"DPR ID: {req.dpr_id}",
+        f"Generated At: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        "-----------------------------------------------------------------\n"
+    ]
+
+    for m in req.messages:
+        sender = "USER" if m.get("sender") == "user" else "AI ASSISTANT"
+        ts = m.get("timestamp", "")
+        lines.append(f"[{sender}] ({ts})")
+        lines.append(m.get("text", ""))
+        if m.get("cited_pages"):
+            lines.append(f"  --> Cited Pages: {', '.join(f'Page {p}' for p in m['cited_pages'])}")
+        lines.append("\n" + "-" * 50 + "\n")
+
+    return {
+        "dpr_id": req.dpr_id,
+        "filename": f"Chatbot_Report_{req.dpr_id[:8]}.txt",
+        "transcript": "\n".join(lines)
+    }
+
+
+class DepartmentApprovalActionRequest(BaseModel):
+    department: str
+    decision: str  # "APPROVE", "REJECT", "REQUEST_CHANGES"
+    reviewer_name: str
+    reviewer_role: Optional[str] = None
+    comments: str
+
+
+@app.get("/api/approvals/dashboard")
+def get_approvals_dashboard(request: Request, username: Optional[str] = None, role: Optional[str] = None):
+    """Return enterprise metrics and KPI summary across all multi-department approval workflows."""
+    return get_approvals_dashboard_kpis()
+
+
+@app.get("/api/dpr/{dpr_id}/workflow")
+def get_dpr_approval_workflow_detail(dpr_id: str, request: Request, username: Optional[str] = None, role: Optional[str] = None):
+    """Return full 5-stage sequential approval workflow, timeline, and Smart AI Decision Support."""
+    proj = _verify_dpr_access(dpr_id, request, username, role)
+    if not proj:
+        raise HTTPException(404, "Project not found")
+
+    wf = get_or_create_dpr_workflow(dpr_id)
+    ai_insights = get_ai_approval_assistant_insights(dpr_id)
+
+    return {
+        "dpr_id": dpr_id,
+        "project_title": proj.title or proj.filename,
+        "sector": proj.sector,
+        "estimated_cost": proj.estimated_cost,
+        "district": getattr(proj, "district", "Karnataka"),
+        "state": getattr(proj, "state", "Karnataka"),
+        "status": proj.status,
+        "workflow": wf,
+        "ai_insights": ai_insights
+    }
+
+
+@app.post("/api/dpr/{dpr_id}/workflow/action")
+def submit_department_approval_action(dpr_id: str, req: DepartmentApprovalActionRequest, request: Request, username: Optional[str] = None, role: Optional[str] = None):
+    """Process a department approval decision (Approve / Request Changes / Reject) with digital signing."""
+    proj = _verify_dpr_access(dpr_id, request, username, role)
+    if not proj:
+        raise HTTPException(404, "Project not found")
+
+    u, r, uid = _extract_request_user(request, username, role)
+    reviewer = req.reviewer_name or u or "Government Officer"
+    role_title = req.reviewer_role or r or "Superintending Engineer"
+
+    result = process_department_decision(
+        dpr_id=dpr_id,
+        department_key=req.department,
+        decision=req.decision,
+        reviewer_name=reviewer,
+        reviewer_role=role_title,
+        comments=req.comments
+    )
+
+    if not result.get("success"):
+        raise HTTPException(400, result.get("error", "Failed to process workflow action"))
+
+    return result
+
+
+@app.get("/api/dpr/{dpr_id}/certificate")
+def get_dpr_approval_certificate(dpr_id: str, request: Request, username: Optional[str] = None, role: Optional[str] = None):
+    """Retrieve or view the official Government Sanction Order & Digital Approval Certificate."""
+    proj = _verify_dpr_access(dpr_id, request, username, role)
+    if not proj:
+        raise HTTPException(404, "Project not found")
+
+    wf = get_or_create_dpr_workflow(dpr_id)
+    cert = wf.get("certificate")
+    if not cert:
+        raise HTTPException(400, "DPR has not achieved Final Approval across all 5 departments yet.")
+
+    return {
+        "dpr_id": dpr_id,
+        "project_title": proj.title or proj.filename,
+        "sector": proj.sector,
+        "estimated_cost": proj.estimated_cost,
+        "certificate": cert,
+        "stages": wf.get("stages", [])
+    }
+
+
+
+

@@ -1,516 +1,966 @@
 // TOPLINE
-
 'use client';
-import { Topbar } from '@/components/layout/Topbar';
-import { CheckCircle, XCircle, Clock, Eye, RefreshCw, User, CalendarDays, ChevronDown, ChevronUp, Sparkles, FileText } from 'lucide-react';
-import { useState, useEffect, useCallback } from 'react';
+
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { Topbar } from '@/components/layout/Topbar';
+import {
+  CheckCircle2, XCircle, Clock, Eye, RefreshCw, User, CalendarDays,
+  ChevronDown, ChevronUp, Sparkles, FileText, AlertTriangle, ShieldCheck,
+  Award, DollarSign, Wrench, ShieldAlert, ArrowRight, ExternalLink,
+  Download, Stamp, CheckSquare, Search, Filter, Send, Lightbulb,
+  Building2, Hash, Layers, Check, X
+} from 'lucide-react';
+import {
+  fetchApprovalsDashboard, fetchDprWorkflowDetail,
+  submitDepartmentApprovalAction, fetchDprCertificate,
+  ApprovalsDashboardKpis, DprApprovalWorkflow,
+  DprWorkflowDetailResponse, DepartmentStage, ApprovalCertificate,
+  AiApprovalAssistantInsights
+} from '@/lib/api';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const DEPARTMENTS = [
+  { key: 'technical', name: 'Technical Review', role: 'Chief Engineer (Technical)' },
+  { key: 'financial', name: 'Financial Review', role: 'Chief Accounts Officer (Finance)' },
+  { key: 'compliance', name: 'Compliance Review', role: 'Compliance & Legal Director' },
+  { key: 'risk', name: 'Risk Assessment Review', role: 'Director (Quality & Safety)' },
+  { key: 'executive', name: 'Executive Sanction', role: 'Principal Secretary (PWD)' },
+];
 
-interface CategoryRec {
-  category: string;
-  icon: string;
-  status: 'Good' | 'Needs Improvement' | 'Critical';
-  confidence: number;
-  recommendation: string;
-  reason: string;
+const SECTOR_ICONS: Record<string, string> = {
+  Roads: '🛣️', Power: '⚡', Healthcare: '🏥', Education: '🎓',
+  Tourism: '🏔️', Agriculture: '🌾', Urban: '🏙️', Telecom: '📡',
+  Infrastructure: '🏗️',
+};
+
+function getOverallStatusBadge(status: string) {
+  const s = (status || '').toUpperCase();
+  if (s === 'FINAL_APPROVED' || s === 'APPROVED') {
+    return { label: 'Final Approved', bg: 'rgba(34, 197, 94, 0.15)', color: 'var(--accent-green)', border: '1px solid rgba(34, 197, 94, 0.35)', icon: <CheckCircle2 size={13} /> };
+  }
+  if (s === 'REJECTED') {
+    return { label: 'Rejected', bg: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.35)', icon: <XCircle size={13} /> };
+  }
+  if (s === 'NEEDS_REVISION' || s === 'CHANGES_REQUESTED') {
+    return { label: 'Returned for Revision', bg: 'rgba(245, 158, 11, 0.15)', color: 'var(--accent-amber)', border: '1px solid rgba(245, 158, 11, 0.35)', icon: <AlertTriangle size={13} /> };
+  }
+  return { label: 'In Department Review', bg: 'rgba(59, 130, 246, 0.15)', color: 'var(--accent-blue)', border: '1px solid rgba(59, 130, 246, 0.35)', icon: <Clock size={13} /> };
 }
 
-interface ApiProject {
-  id: string;
-  title: string;
-  original_filename: string;
-  state: string;
-  sector: string;
-  estimated_cost: number;
-  status: string;
-  risk_score: number | null;
-  overall_score: number | null;
-  upload_date: string;
-  submitted_by: string;
-  approval_comment: string | null;
-  reviewed_by?: string | null;
-  reviewed_at?: string | null;
-  in_approvals?: boolean;
-}
-
-type Decision = 'approve' | 'reject' | 'pending' | '';
-
-function riskLevel(score: number | null): string {
-  if (!score) return 'Medium';
-  if (score > 65) return 'High';
-  if (score > 35) return 'Medium';
-  return 'Low';
-}
-
-function formatDate(iso: string): string {
-  try { return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }); }
-  catch { return iso; }
-}
-
-function statusBadge(status: string) {
-  const map: Record<string, { cls: string; label: string }> = {
-    APPROVED:       { cls: 'badge-approved',   label: 'Approved' },
-    REJECTED:       { cls: 'badge-rejected',   label: 'Rejected' },
-    PENDING:        { cls: 'badge-pending',    label: 'Pending' },
-    PROCESSING:     { cls: 'badge-processing', label: 'Processing' },
-    NEEDS_REVISION: { cls: 'badge-review',     label: 'Needs Revision' },
-  };
-  const info = map[status?.toUpperCase()] ?? { cls: 'badge-pending', label: status };
-  return <span className={`badge ${info.cls}`}>{info.label}</span>;
+function getStageBadge(status: string) {
+  const s = (status || '').toUpperCase();
+  if (s === 'APPROVED') return { label: 'Approved', color: 'var(--accent-green)', bg: 'rgba(34,197,94,0.15)' };
+  if (s === 'IN_REVIEW') return { label: 'In Review', color: 'var(--accent-blue)', bg: 'rgba(59,130,246,0.15)' };
+  if (s === 'CHANGES_REQUESTED') return { label: 'Changes Requested', color: 'var(--accent-amber)', bg: 'rgba(245,158,11,0.15)' };
+  if (s === 'REJECTED') return { label: 'Rejected', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' };
+  return { label: 'Pending', color: 'var(--text-muted)', bg: 'rgba(255,255,255,0.05)' };
 }
 
 export default function ApprovalsPage() {
-  const [projects, setProjects] = useState<ApiProject[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState('');
-  const [filterTab, setFilterTab] = useState<'ALL' | 'MY_APPROVALS' | 'PENDING' | 'APPROVED' | 'REJECTED'>('ALL');
+  const searchParams = useSearchParams();
+  const highlightDprId = searchParams.get('id') || '';
 
-  // Per-card state
-  const [decisions, setDecisions]     = useState<Record<string, Decision>>({});
-  const [comments, setComments]       = useState<Record<string, string>>({});
-  const [submitting, setSubmitting]   = useState<Record<string, boolean>>({});
-  const [submitError, setSubmitError] = useState<Record<string, string>>({});
-  const [submitOk, setSubmitOk]       = useState<Record<string, boolean>>({});
-  const [showRecs, setShowRecs]       = useState<Record<string, boolean>>({});
-  const [recs, setRecs]               = useState<Record<string, CategoryRec[]>>({});
-  const [loadingRecs, setLoadingRecs] = useState<Record<string, boolean>>({});
+  const [dashboardData, setDashboardData] = useState<ApprovalsDashboardKpis | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
 
-  const loadCategoryRecs = async (projectId: string) => {
-    if (recs[projectId]) {
-      setShowRecs(prev => ({ ...prev, [projectId]: !prev[projectId] }));
-      return;
-    }
-    setLoadingRecs(prev => ({ ...prev, [projectId]: true }));
+  // Filter states
+  const [filterStatus, setFilterStatus] = useState<string>('ALL');
+  const [filterDept, setFilterDept] = useState<string>('ALL');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Active expanded DPR detail map
+  const [expandedDetails, setExpandedDetails] = useState<Record<string, DprWorkflowDetailResponse>>({});
+  const [loadingDetails, setLoadingDetails] = useState<Record<string, boolean>>({});
+
+  // Action Modal state
+  const [actionModalDpr, setActionModalDpr] = useState<DprApprovalWorkflow | null>(null);
+  const [selectedDept, setSelectedDept] = useState<string>('technical');
+  const [selectedDecision, setSelectedDecision] = useState<'APPROVE' | 'REJECT' | 'REQUEST_CHANGES'>('APPROVE');
+  const [reviewerName, setReviewerName] = useState<string>('Chief Engineer (Technical)');
+  const [reviewerRole, setReviewerRole] = useState<string>('Technical Directorate');
+  const [actionComments, setActionComments] = useState<string>('');
+  const [submittingAction, setSubmittingAction] = useState<boolean>(false);
+  const [actionError, setActionError] = useState<string>('');
+
+  // Certificate Modal state
+  const [certificateModalData, setCertificateModalData] = useState<{
+    projectTitle: string;
+    certificate: ApprovalCertificate;
+    stages: DepartmentStage[];
+    cost: number;
+    dprId: string;
+  } | null>(null);
+
+  const loadDashboard = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/api/dpr/${projectId}/category-analysis`);
-      if (!res.ok) throw new Error('Failed');
-      const data = await res.json();
-      setRecs(prev => ({ ...prev, [projectId]: data.categories || [] }));
-      setShowRecs(prev => ({ ...prev, [projectId]: true }));
-    } catch {
-      setRecs(prev => ({ ...prev, [projectId]: [] }));
-      setShowRecs(prev => ({ ...prev, [projectId]: true }));
-    } finally {
-      setLoadingRecs(prev => ({ ...prev, [projectId]: false }));
-    }
-  };
+      setLoading(true);
+      const data = await fetchApprovalsDashboard();
+      setDashboardData(data);
 
-  const fetchProjects = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
-    else setRefreshing(true);
-    setError('');
-    try {
-      const res = await fetch(`${API_URL}/api/projects`);
-      if (!res.ok) throw new Error(`Server error ${res.status}`);
-      const data: ApiProject[] = await res.json();
-      setProjects(data);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to load projects');
+      // If there's a highlighted DPR ID from query params, auto-expand it
+      if (highlightDprId && data) {
+        loadDprDetail(highlightDprId);
+      }
+    } catch (err) {
+      console.error('Error loading approvals dashboard:', err);
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
-  }, []);
+  }, [highlightDprId]);
 
-  useEffect(() => { fetchProjects(); }, [fetchProjects]);
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
 
-  // Counts
-  const pendingCount  = projects.filter(p => !['APPROVED','REJECTED'].includes(p.status?.toUpperCase())).length;
-  const approvedCount = projects.filter(p => p.status?.toUpperCase() === 'APPROVED').length;
-  const rejectedCount = projects.filter(p => p.status?.toUpperCase() === 'REJECTED').length;
-  const inApprovalsCount = projects.filter(p => p.in_approvals).length;
-
-  // Filter
-  const filtered = projects.filter(p => {
-    if (filterTab === 'ALL') return true;
-    if (filterTab === 'MY_APPROVALS') return p.in_approvals === true;
-    if (filterTab === 'PENDING') return !['APPROVED','REJECTED'].includes(p.status?.toUpperCase());
-    return p.status?.toUpperCase() === filterTab;
-  });
-
-  const setDecision = (id: string, val: Decision) => {
-    setDecisions(prev => ({ ...prev, [id]: val }));
-    setSubmitError(prev => ({ ...prev, [id]: '' }));
-    setSubmitOk(prev => ({ ...prev, [id]: false }));
-  };
-
-  const confirmDecision = async (projectId: string) => {
-    const decision = decisions[projectId];
-    const comment  = (comments[projectId] || '').trim();
-    if (!comment) {
-      setSubmitError(prev => ({ ...prev, [projectId]: 'A justification comment is required before confirming.' }));
+  const loadDprDetail = async (dprId: string) => {
+    if (expandedDetails[dprId]) {
+      // Toggle collapse
+      setExpandedDetails(prev => {
+        const next = { ...prev };
+        delete next[dprId];
+        return next;
+      });
       return;
     }
-    setSubmitting(prev => ({ ...prev, [projectId]: true }));
-    setSubmitError(prev => ({ ...prev, [projectId]: '' }));
+
+    setLoadingDetails(prev => ({ ...prev, [dprId]: true }));
     try {
-      const res = await fetch(`${API_URL}/api/dpr/${projectId}/approve`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ decision, comment, reviewed_by: 'Admin' }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error((data as { detail?: string }).detail || `Error ${res.status}`);
+      const detail = await fetchDprWorkflowDetail(dprId);
+      if (detail) {
+        setExpandedDetails(prev => ({ ...prev, [dprId]: detail }));
       }
-      const statusMap: Record<string, string> = { approve: 'APPROVED', reject: 'REJECTED', pending: 'PENDING' };
-      const newStatus = statusMap[decision] || 'PENDING';
-      const now = new Date().toISOString();
-      setProjects(prev => prev.map(p => p.id === projectId
-        ? { ...p, status: newStatus, approval_comment: comment, reviewed_by: 'Admin', reviewed_at: now }
-        : p
-      ));
-      setDecisions(prev => ({ ...prev, [projectId]: '' }));
-      setComments(prev => ({ ...prev, [projectId]: '' }));
-      setSubmitOk(prev => ({ ...prev, [projectId]: true }));
-      setTimeout(() => setSubmitOk(prev => ({ ...prev, [projectId]: false })), 3000);
-    } catch (e: unknown) {
-      setSubmitError(prev => ({ ...prev, [projectId]: e instanceof Error ? e.message : 'Failed to submit decision' }));
+    } catch (err) {
+      console.error(`Error loading detail for ${dprId}:`, err);
     } finally {
-      setSubmitting(prev => ({ ...prev, [projectId]: false }));
+      setLoadingDetails(prev => ({ ...prev, [dprId]: false }));
     }
   };
 
-  const tabs: { key: typeof filterTab; label: string; count: number }[] = [
-    { key: 'ALL',          label: 'All DPRs',    count: projects.length },
-    { key: 'MY_APPROVALS', label: 'My Approvals', count: inApprovalsCount },
-    { key: 'PENDING',      label: 'Pending',     count: pendingCount },
-    { key: 'APPROVED',     label: 'Approved',    count: approvedCount },
-    { key: 'REJECTED',     label: 'Rejected',    count: rejectedCount },
-  ];
+  const handleOpenActionModal = (wf: DprApprovalWorkflow) => {
+    setActionModalDpr(wf);
+    const currStage = wf.current_stage || 'technical';
+    setSelectedDept(currStage === 'completed' ? 'technical' : currStage);
+    const matchedDept = DEPARTMENTS.find(d => d.key === currStage) || DEPARTMENTS[0];
+    setReviewerName(matchedDept.role);
+    setReviewerRole(matchedDept.name);
+    setSelectedDecision('APPROVE');
+    setActionComments('');
+    setActionError('');
+  };
+
+  const handleDeptChange = (deptKey: string) => {
+    setSelectedDept(deptKey);
+    const matched = DEPARTMENTS.find(d => d.key === deptKey);
+    if (matched) {
+      setReviewerName(matched.role);
+      setReviewerRole(matched.name);
+    }
+  };
+
+  const handleExecuteAction = async () => {
+    if (!actionModalDpr) return;
+    if (!actionComments.trim()) {
+      setActionError('Justification remarks / comments are required for this department action.');
+      return;
+    }
+
+    setSubmittingAction(true);
+    setActionError('');
+
+    try {
+      const res = await submitDepartmentApprovalAction(
+        actionModalDpr.dpr_id,
+        selectedDept,
+        selectedDecision,
+        reviewerName,
+        reviewerRole,
+        actionComments.trim()
+      );
+
+      if (res && res.success) {
+        setActionModalDpr(null);
+        // Refresh dashboard and detail
+        await loadDashboard();
+        const updatedDetail = await fetchDprWorkflowDetail(actionModalDpr.dpr_id);
+        if (updatedDetail) {
+          setExpandedDetails(prev => ({ ...prev, [actionModalDpr.dpr_id]: updatedDetail }));
+        }
+      } else {
+        setActionError(res?.error || 'Failed to record decision.');
+      }
+    } catch (err: any) {
+      setActionError(err.message || 'Error processing request.');
+    } finally {
+      setSubmittingAction(false);
+    }
+  };
+
+  const handleOpenCertificate = (wf: DprApprovalWorkflow, cert?: ApprovalCertificate | null) => {
+    if (!cert && !wf.certificate) return;
+    setCertificateModalData({
+      projectTitle: wf.project_title || wf.dpr_id,
+      certificate: (cert || wf.certificate)!,
+      stages: wf.stages || [],
+      cost: wf.estimated_cost || 50.0,
+      dprId: wf.dpr_id
+    });
+  };
+
+  const workflows = dashboardData?.workflows || [];
+
+  const filteredWorkflows = workflows.filter(w => {
+    // Status filter
+    const ost = String(w.overall_status || '').toUpperCase();
+    if (filterStatus === 'APPROVED' && ost !== 'FINAL_APPROVED' && ost !== 'APPROVED') return false;
+    if (filterStatus === 'REJECTED' && ost !== 'REJECTED') return false;
+    if (filterStatus === 'NEEDS_REVISION' && ost !== 'NEEDS_REVISION' && ost !== 'CHANGES_REQUESTED') return false;
+    if (filterStatus === 'IN_REVIEW' && ost !== 'IN_REVIEW' && ost !== 'PENDING' && ost !== 'PENDING_REVIEW') return false;
+
+    // Dept filter
+    if (filterDept !== 'ALL' && w.current_stage !== filterDept) return false;
+
+    // Search query
+    const q = searchQuery.toLowerCase().trim();
+    if (q) {
+      const matchTitle = (w.project_title || '').toLowerCase().includes(q);
+      const matchId = w.dpr_id.toLowerCase().includes(q);
+      const matchSector = (w.sector || '').toLowerCase().includes(q);
+      const matchState = (w.state || '').toLowerCase().includes(q);
+      if (!matchTitle && !matchId && !matchSector && !matchState) return false;
+    }
+
+    return true;
+  });
 
   return (
     <>
       <Topbar
-        title="Approvals"
-        subtitle="Manually review, approve, reject, or keep DPRs as pending"
+        title="Multi-Level Approval Workflow Management System"
+        subtitle="Enterprise government-grade 5-department sequential and parallel approval pipelines for Karnataka PWD DPRs"
         actions={
-          <button className="topbar-btn" onClick={() => fetchProjects(true)} disabled={refreshing}>
-            <RefreshCw size={14} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
-            Refresh
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Link href="/recommendations" className="topbar-btn secondary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Lightbulb size={14} /> Explainable AI
+            </Link>
+            <Link href="/dpr/upload" className="topbar-btn primary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              Upload New DPR
+            </Link>
+            <button
+              className="topbar-btn"
+              onClick={loadDashboard}
+              disabled={loading || refreshing}
+              title="Refresh Approval Workflows"
+            >
+              <RefreshCw size={14} className={loading || refreshing ? 'spin-icon' : ''} />
+            </button>
+          </div>
         }
       />
-      <div className="page-content fade-in">
 
-        {/* ── Summary Cards ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
-          {[
-            { label: 'Pending Decision', count: pendingCount,  color: 'var(--accent-amber)', icon: <Clock size={18} /> },
-            { label: 'Approved',         count: approvedCount, color: 'var(--accent-green)', icon: <CheckCircle size={18} /> },
-            { label: 'Rejected',         count: rejectedCount, color: 'var(--accent-red)',   icon: <XCircle size={18} /> },
-          ].map(item => (
-            <div key={item.label} className="card" style={{ padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 14, position: 'relative', overflow: 'hidden' }}>
-              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: item.color }} />
-              <div style={{ width: 42, height: 42, borderRadius: 12, background: `${item.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: item.color, flexShrink: 0 }}>
-                {item.icon}
-              </div>
-              <div>
-                <div style={{ fontSize: 26, fontWeight: 900, color: item.color, fontFamily: 'var(--font-display)', lineHeight: 1 }}>{item.count}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{item.label}</div>
-              </div>
+      <div className="page-content fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+        {/* ── 1. EXECUTIVE KPI SCORECARD STRIP ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>
+          
+          {/* Total Pending */}
+          <div className="card" style={{ padding: '14px 16px', background: 'rgba(15, 23, 42, 0.85)', border: '1px solid rgba(59,130,246,0.25)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-muted)', fontSize: 11, fontWeight: 700 }}>
+              <span>Pending Approvals</span>
+              <Clock size={15} color="var(--accent-blue)" />
             </div>
-          ))}
+            <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--accent-blue)', marginTop: 4 }}>
+              {dashboardData?.pending_approvals ?? 0}
+            </div>
+            <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 2 }}>
+              Across 5 Directorate Queues
+            </div>
+          </div>
+
+          {/* Final Approved */}
+          <div className="card" style={{ padding: '14px 16px', background: 'rgba(15, 23, 42, 0.85)', border: '1px solid rgba(34,197,94,0.25)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-muted)', fontSize: 11, fontWeight: 700 }}>
+              <span>Final Approved</span>
+              <CheckCircle2 size={15} color="var(--accent-green)" />
+            </div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--accent-green)', marginTop: 4 }}>
+              {dashboardData?.approved_dprs ?? 0}
+            </div>
+            <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 2 }}>
+              Certified &amp; Sanctioned
+            </div>
+          </div>
+
+          {/* Returned for Revision */}
+          <div className="card" style={{ padding: '14px 16px', background: 'rgba(15, 23, 42, 0.85)', border: '1px solid rgba(245,158,11,0.25)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-muted)', fontSize: 11, fontWeight: 700 }}>
+              <span>Needs Revision</span>
+              <AlertTriangle size={15} color="var(--accent-amber)" />
+            </div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--accent-amber)', marginTop: 4 }}>
+              {dashboardData?.needs_revision ?? 0}
+            </div>
+            <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 2 }}>
+              Returned to Submitter
+            </div>
+          </div>
+
+          {/* Rejected */}
+          <div className="card" style={{ padding: '14px 16px', background: 'rgba(15, 23, 42, 0.85)', border: '1px solid rgba(239,68,68,0.25)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-muted)', fontSize: 11, fontWeight: 700 }}>
+              <span>Rejected DPRs</span>
+              <XCircle size={15} color="#ef4444" />
+            </div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: '#ef4444', marginTop: 4 }}>
+              {dashboardData?.rejected_dprs ?? 0}
+            </div>
+            <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 2 }}>
+              Terminated Proposals
+            </div>
+          </div>
+
+          {/* Completion Rate */}
+          <div className="card" style={{ padding: '14px 16px', background: 'rgba(15, 23, 42, 0.85)', border: '1px solid rgba(168,85,247,0.25)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-muted)', fontSize: 11, fontWeight: 700 }}>
+              <span>Sanction Rate</span>
+              <Award size={15} color="var(--accent-purple)" />
+            </div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--accent-purple)', marginTop: 4 }}>
+              {dashboardData?.completion_percentage ?? 0}%
+            </div>
+            <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 2 }}>
+              Approval Completion
+            </div>
+          </div>
+
+          {/* SLA Turnaround */}
+          <div className="card" style={{ padding: '14px 16px', background: 'rgba(15, 23, 42, 0.85)', border: '1px solid rgba(6,182,212,0.25)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-muted)', fontSize: 11, fontWeight: 700 }}>
+              <span>Avg SLA Turnaround</span>
+              <CalendarDays size={15} color="var(--accent-cyan)" />
+            </div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--accent-cyan)', marginTop: 4 }}>
+              {dashboardData?.average_turnaround_days ?? 4.2}d
+            </div>
+            <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 2 }}>
+              Per Department Stage
+            </div>
+          </div>
+
         </div>
 
-        {/* ── Tab bar ── */}
-        <div className="tab-bar" style={{ marginBottom: 20 }}>
-          {tabs.map(t => (
-            <div key={t.key} className={`tab-item ${filterTab === t.key ? 'active' : ''}`} onClick={() => setFilterTab(t.key)}>
-              {t.label}
-              <span style={{ marginLeft: 6, background: filterTab === t.key ? 'rgba(33,150,243,0.2)' : 'var(--bg-secondary)', padding: '1px 6px', borderRadius: 10, fontSize: 10, fontWeight: 700 }}>
-                {t.count}
-              </span>
+        {/* ── 2. FILTER & SEARCH TOOLBAR ── */}
+        <div className="card" style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+          
+          {/* Status Tabs */}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {[
+              { key: 'ALL', label: 'All DPRs' },
+              { key: 'IN_REVIEW', label: 'In Review' },
+              { key: 'APPROVED', label: 'Final Approved' },
+              { key: 'NEEDS_REVISION', label: 'Needs Revision' },
+              { key: 'REJECTED', label: 'Rejected' },
+            ].map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setFilterStatus(tab.key)}
+                style={{
+                  background: filterStatus === tab.key ? 'var(--accent-blue)' : 'rgba(255,255,255,0.04)',
+                  color: filterStatus === tab.key ? '#fff' : 'var(--text-secondary)',
+                  border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '5px 12px',
+                  fontSize: 12, fontWeight: 600, cursor: 'pointer'
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Department Selector & Search */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-muted)' }}>Stage:</span>
+              <select
+                value={filterDept}
+                onChange={e => setFilterDept(e.target.value)}
+                className="select-field"
+                style={{ fontSize: 11.5, padding: '4px 8px' }}
+              >
+                <option value="ALL">All Departments</option>
+                {DEPARTMENTS.map(d => (
+                  <option key={d.key} value={d.key}>{d.name}</option>
+                ))}
+              </select>
             </div>
-          ))}
+
+            <div style={{ position: 'relative', width: 220 }}>
+              <Search size={13} style={{ position: 'absolute', left: 9, top: 8, color: 'var(--text-muted)' }} />
+              <input
+                type="text"
+                placeholder="Search DPRs, sector, state..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="select-field"
+                style={{ width: '100%', paddingLeft: 28, paddingRight: 10, paddingTop: 4, paddingBottom: 4, fontSize: 12 }}
+              />
+            </div>
+          </div>
+
         </div>
 
-        {/* ── Error ── */}
-        {error && (
-          <div style={{ padding: '12px 16px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 10, marginBottom: 16, fontSize: 13, color: '#ef4444' }}>
-            ⚠ {error} — <button style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 600 }} onClick={() => fetchProjects()}>Retry</button>
-          </div>
-        )}
-
-        {/* ── Loading ── */}
-        {loading && <div className="empty-state"><div style={{ fontSize: 14, color: 'var(--text-muted)' }}>Loading DPRs…</div></div>}
-
-        {/* ── Empty ── */}
-        {!loading && !error && filtered.length === 0 && (
-          <div className="empty-state">
-            <div className="empty-state-icon">✅</div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>No DPRs in this category</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Try switching to a different tab.</div>
-          </div>
-        )}
-
-        {/* ── DPR Cards ── */}
-        {!loading && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {filtered.map(dpr => {
-              const dec        = decisions[dpr.id] || '';
-              const isBusy     = submitting[dpr.id] || false;
-              const errMsg     = submitError[dpr.id] || '';
-              const wasOk      = submitOk[dpr.id] || false;
-              const ql         = dpr.overall_score ?? 0;
-              const risk       = riskLevel(dpr.risk_score);
-              const isActioned = ['APPROVED','REJECTED'].includes(dpr.status?.toUpperCase());
+        {/* ── 3. DPR WORKFLOW CARDS LIST ── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {filteredWorkflows.length === 0 ? (
+            <div className="card" style={{ padding: '36px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+              <CheckCircle2 size={36} style={{ margin: '0 auto 10px', color: 'var(--accent-green)' }} />
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>No DPR approval workflows match this filter.</div>
+              <div style={{ fontSize: 12.5, marginTop: 4 }}>Try switching tabs or resetting the search query.</div>
+            </div>
+          ) : (
+            filteredWorkflows.map(wf => {
+              const statusInfo = getOverallStatusBadge(wf.overall_status);
+              const isExpanded = !!expandedDetails[wf.dpr_id];
+              const detailObj = expandedDetails[wf.dpr_id];
+              const aiInsights = detailObj?.ai_insights;
 
               return (
-                <div key={dpr.id} className="card" style={{
-                  borderColor:
-                    dpr.status === 'APPROVED' ? 'rgba(34,197,94,0.35)' :
-                    dpr.status === 'REJECTED' ? 'rgba(244,63,94,0.35)' :
-                    dec === 'approve'          ? 'rgba(34,197,94,0.3)' :
-                    dec === 'reject'           ? 'rgba(244,63,94,0.3)' :
-                    dec === 'pending'          ? 'rgba(245,158,11,0.3)' :
-                    'var(--border)',
-                  transition: 'border-color 0.2s',
-                }}>
-                  <div style={{ padding: '18px 20px' }}>
-
-                    {/* ── Header row ── */}
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
-
-                      {/* Left: project info */}
-                      <div style={{ flex: 1, minWidth: 240 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--accent-blue-light)' }}>{dpr.id.slice(0, 8)}…</span>
-                          <span className={`badge badge-${risk.toLowerCase()}`}>{risk} Risk</span>
-                          {statusBadge(dpr.status)}
-                        </div>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4, fontFamily: 'var(--font-display)' }}>
-                          {dpr.title || dpr.original_filename}
-                        </div>
-                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                          <span>📍 {dpr.state}</span>
-                          <span>🏭 {dpr.sector}</span>
-                          <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>₹ {dpr.estimated_cost?.toFixed(0)} Cr</span>
-                          <span style={{ color: 'var(--text-muted)' }}>📅 {formatDate(dpr.upload_date)}</span>
-                          {dpr.submitted_by && <span style={{ color: 'var(--text-muted)' }}>🏢 {dpr.submitted_by}</span>}
-                        </div>
+                <div
+                  key={wf.dpr_id}
+                  className="card"
+                  style={{
+                    padding: 20,
+                    background: 'rgba(15, 23, 42, 0.95)',
+                    border: '1px solid rgba(59, 130, 246, 0.25)',
+                    display: 'flex', flexDirection: 'column', gap: 16
+                  }}
+                >
+                  {/* Card Header */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{ width: 44, height: 44, borderRadius: 10, background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>
+                        {SECTOR_ICONS[wf.sector || ''] || '📁'}
                       </div>
-
-                      {/* Center: quality score */}
-                      <div style={{ textAlign: 'center', flexShrink: 0 }}>
-                        <div style={{ fontSize: 24, fontWeight: 900, fontFamily: 'var(--font-display)', color: ql >= 80 ? 'var(--accent-green)' : ql >= 60 ? 'var(--accent-amber)' : 'var(--accent-red)' }}>
-                          {ql || '—'}
+                      <div>
+                        <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', lineHeight: 1.3 }}>
+                          {wf.project_title || wf.dpr_id}
                         </div>
-                        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Quality /100</div>
-                      </div>
-
-                      {/* Right: action buttons */}
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0, flexWrap: 'wrap' }}>
-                        <Link href={`/dpr/${dpr.id}`} className="btn btn-secondary" style={{ padding: '7px 12px', fontSize: 12 }}>
-                          <Eye size={13} /> Review
-                        </Link>
-
-                        {/* ── APPROVE ── */}
-                        <button
-                          onClick={() => setDecision(dpr.id, dec === 'approve' ? '' : 'approve')}
-                          disabled={isBusy}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 6,
-                            padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700,
-                            cursor: isBusy ? 'not-allowed' : 'pointer', border: 'none',
-                            fontFamily: 'var(--font-body)', transition: 'all 0.15s',
-                            background: dec === 'approve' ? 'var(--accent-green)' : dpr.status === 'APPROVED' ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)',
-                            color: dec === 'approve' ? 'white' : 'var(--accent-green)',
-                            boxShadow: dec === 'approve' ? '0 2px 8px rgba(34,197,94,0.4)' : 'none',
-                          }}
-                        >
-                          <CheckCircle size={13} />
-                          Approve
-                        </button>
-
-                        {/* ── REJECT ── */}
-                        <button
-                          onClick={() => setDecision(dpr.id, dec === 'reject' ? '' : 'reject')}
-                          disabled={isBusy}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 6,
-                            padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700,
-                            cursor: isBusy ? 'not-allowed' : 'pointer', border: 'none',
-                            fontFamily: 'var(--font-body)', transition: 'all 0.15s',
-                            background: dec === 'reject' ? '#ef4444' : dpr.status === 'REJECTED' ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.1)',
-                            color: dec === 'reject' ? 'white' : '#ef4444',
-                            boxShadow: dec === 'reject' ? '0 2px 8px rgba(239,68,68,0.4)' : 'none',
-                          }}
-                        >
-                          <XCircle size={13} />
-                          Reject
-                        </button>
-
-                        {/* ── KEEP PENDING ── */}
-                        <button
-                          onClick={() => setDecision(dpr.id, dec === 'pending' ? '' : 'pending')}
-                          disabled={isBusy}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 6,
-                            padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700,
-                            cursor: isBusy ? 'not-allowed' : 'pointer', border: 'none',
-                            fontFamily: 'var(--font-body)', transition: 'all 0.15s',
-                            background: dec === 'pending' ? 'var(--accent-amber)' : 'rgba(245,158,11,0.1)',
-                            color: dec === 'pending' ? 'white' : 'var(--accent-amber)',
-                            boxShadow: dec === 'pending' ? '0 2px 8px rgba(245,158,11,0.4)' : 'none',
-                          }}
-                        >
-                          <Clock size={13} />
-                          Pending
-                        </button>
+                        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 4 }}>
+                          <span>📍 {wf.state || 'Karnataka'}</span>
+                          <span>🏭 {wf.sector || 'Infrastructure'}</span>
+                          <span>💰 ₹{wf.estimated_cost?.toFixed(1) || '0.0'} Cr</span>
+                          <span style={{ fontFamily: 'monospace' }}>ID: {wf.dpr_id.slice(0, 8)}</span>
+                        </div>
                       </div>
                     </div>
 
-                    {/* ── Reviewer info (actioned DPRs) ── */}
-                    {isActioned && dpr.reviewed_by && (
-                      <div style={{ marginTop: 12, display: 'flex', gap: 16, fontSize: 11, color: 'var(--text-muted)', borderTop: '1px solid var(--border-light)', paddingTop: 10 }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                          <User size={12} /> Reviewed by <strong style={{ color: 'var(--text-secondary)' }}>{dpr.reviewed_by}</strong>
-                        </span>
-                        {dpr.reviewed_at && (
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                            <CalendarDays size={12} /> {formatDate(dpr.reviewed_at)}
-                          </span>
-                        )}
-                        {dpr.approval_comment && (
-                          <span style={{ fontStyle: 'italic' }}>"{dpr.approval_comment}"</span>
-                        )}
-                      </div>
-                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 700, padding: '4px 10px', borderRadius: 6, ...statusInfo }}>
+                        {statusInfo.icon} {statusInfo.label}
+                      </span>
+                    </div>
+                  </div>
 
-                    {/* ── Quick links row ── */}
-                    <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap', borderTop: '1px solid var(--border-light)', paddingTop: 12 }}>
-                      <Link
-                        href={`/dpr/${dpr.id}/viewer`}
-                        className="btn btn-secondary"
-                        style={{ padding: '6px 12px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}
-                      >
-                        <FileText size={12} /> PDF Preview
-                      </Link>
-                      <Link
-                        href={`/ai-suggestions/${dpr.id}`}
-                        className="btn btn-secondary"
-                        style={{ padding: '6px 12px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}
-                      >
-                        <Sparkles size={12} /> AI Suggestions
-                      </Link>
-                      {dpr.in_approvals && (
-                        <button
-                          onClick={() => loadCategoryRecs(dpr.id)}
-                          className="btn btn-secondary"
-                          style={{ padding: '6px 12px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}
-                          disabled={loadingRecs[dpr.id]}
-                        >
-                          {loadingRecs[dpr.id]
-                            ? <RefreshCw size={11} style={{ animation: 'spin 1s linear infinite' }} />
-                            : showRecs[dpr.id] ? <ChevronUp size={11} /> : <ChevronDown size={11} />
-                          }
-                          {loadingRecs[dpr.id] ? 'Loading…' : showRecs[dpr.id] ? 'Hide AI Recs' : 'View AI Recommendations'}
-                        </button>
-                      )}
+                  {/* ── 4. 5-STAGE SEQUENTIAL VISUAL WORKFLOW STEPPER ── */}
+                  <div style={{ background: 'rgba(0,0,0,0.3)', padding: '14px 16px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>
+                      5-Department Sequential Approval Pipeline:
                     </div>
 
-                    {/* ── AI Category Recommendations Panel ── */}
-                    {showRecs[dpr.id] && (
-                      <div style={{ marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 14 }}>
-                        <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <Sparkles size={12} /> AI Category Recommendations
-                        </div>
-                        {recs[dpr.id]?.length === 0 && (
-                          <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                            No recommendations found. Visit AI Suggestions to generate them.
-                          </div>
-                        )}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-                          {(recs[dpr.id] || []).map((rec) => {
-                            const recColor = rec.status === 'Good' ? 'var(--accent-green)' : rec.status === 'Critical' ? '#ef4444' : 'var(--accent-amber)';
-                            return (
-                              <div key={rec.category} style={{
-                                padding: '10px 12px', borderRadius: 9,
-                                background: 'var(--bg-secondary)', border: `1px solid ${recColor}22`,
-                              }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                                  <span style={{ fontSize: 16 }}>{rec.icon}</span>
-                                  <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                      {rec.category}
-                                    </div>
-                                    <div style={{ fontSize: 9, fontWeight: 800, color: recColor, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                      {rec.status} · {rec.confidence}% confidence
-                                    </div>
-                                  </div>
-                                </div>
-                                <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', lineHeight: 1.55 }}>
-                                  {rec.recommendation}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* ── Decision confirm row ── */}
-
-                    {dec && (
-                      <div style={{ marginTop: 14, padding: '12px 14px', borderRadius: 10, background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8 }}>
-                          {dec === 'approve' ? '✅ Confirming Approval' : dec === 'reject' ? '❌ Confirming Rejection' : '🕐 Setting Back to Pending'}
-                          {' '}— add a mandatory comment:
-                        </div>
-                        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                          <textarea
-                            className="input-field"
-                            rows={2}
-                            placeholder={
-                              dec === 'approve'  ? 'Reason for approval… (e.g. All clearances verified, quality score adequate)' :
-                              dec === 'reject'   ? 'Reason for rejection… (e.g. Missing EIA, cost estimates unrealistic)' :
-                              'Reason for keeping pending… (e.g. Awaiting state NOC, additional info requested)'
-                            }
-                            style={{ resize: 'none', flex: 1 }}
-                            value={comments[dpr.id] || ''}
-                            onChange={e => setComments(prev => ({ ...prev, [dpr.id]: e.target.value }))}
-                            disabled={isBusy}
-                          />
-                          <button
-                            onClick={() => confirmDecision(dpr.id)}
-                            disabled={isBusy}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+                      {(wf.stages || []).map((stg, sIdx) => {
+                        const sBadge = getStageBadge(stg.status);
+                        const isCurrentActive = wf.current_stage === stg.department_key && String(wf.overall_status || '').toUpperCase() === 'IN_REVIEW';
+                        return (
+                          <div
+                            key={stg.department_key}
                             style={{
-                              padding: '9px 18px', borderRadius: 8, border: 'none',
-                              fontSize: 12, fontWeight: 800, cursor: isBusy ? 'not-allowed' : 'pointer',
-                              fontFamily: 'var(--font-body)', whiteSpace: 'nowrap',
-                              background:
-                                dec === 'approve' ? 'var(--accent-green)' :
-                                dec === 'reject'  ? '#ef4444' :
-                                'var(--accent-amber)',
-                              color: 'white',
-                              opacity: isBusy ? 0.7 : 1,
+                              padding: '10px 12px',
+                              borderRadius: 6,
+                              background: isCurrentActive ? 'rgba(59,130,246,0.18)' : 'rgba(255,255,255,0.02)',
+                              border: isCurrentActive ? '1px solid var(--accent-blue)' : '1px solid rgba(255,255,255,0.06)',
+                              display: 'flex', flexDirection: 'column', gap: 4
                             }}
                           >
-                            {isBusy ? 'Saving…' : `Confirm ${dec === 'approve' ? 'Approval' : dec === 'reject' ? 'Rejection' : 'Pending'}`}
-                          </button>
-                        </div>
-                        {errMsg && <div style={{ marginTop: 7, fontSize: 12, color: '#ef4444' }}>⚠ {errMsg}</div>}
-                      </div>
-                    )}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)' }}>
+                                STEP {sIdx + 1}
+                              </span>
+                              <span style={{ fontSize: 9.5, fontWeight: 700, color: sBadge.color, background: sBadge.bg, padding: '1px 5px', borderRadius: 4 }}>
+                                {sBadge.label}
+                              </span>
+                            </div>
 
-                    {/* ── Success toast ── */}
-                    {wasOk && (
-                      <div style={{ marginTop: 10, fontSize: 12, color: 'var(--accent-green)', fontWeight: 600 }}>
-                        ✓ Status updated successfully
-                      </div>
-                    )}
+                            <div style={{ fontSize: 12, fontWeight: 700, color: '#fff', marginTop: 2 }}>
+                              {stg.department_name.replace(' Review', '')}
+                            </div>
+
+                            <div style={{ fontSize: 10.5, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {stg.reviewer_name ? `By: ${stg.reviewer_name.split(' ')[0]}` : stg.authority.split(' ')[0]}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
+
+                  {/* ── EXPANDED DETAILS (SMART AI ASSISTANT & AUDIT LOGS) ── */}
+                  {isExpanded && detailObj && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                      
+                      {/* AI Decision Support Box */}
+                      {aiInsights && (
+                        <div style={{ padding: 16, borderRadius: 8, background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.95))', border: '1px solid rgba(147, 51, 234, 0.35)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <Sparkles size={16} color="var(--accent-purple)" />
+                              <span style={{ fontSize: 13, fontWeight: 800, color: '#fff' }}>
+                                Smart AI Approval Decision Support
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'rgba(34,197,94,0.15)', color: 'var(--accent-green)' }}>
+                                Compliance: {aiInsights.compliance_score}%
+                              </span>
+                              <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'rgba(59,130,246,0.15)', color: 'var(--accent-blue)' }}>
+                                Quality: {aiInsights.dqci_grade}
+                              </span>
+                              <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'rgba(6,182,212,0.15)', color: 'var(--accent-cyan)' }}>
+                                Readiness: {aiInsights.approval_readiness_score}%
+                              </span>
+                            </div>
+                          </div>
+
+                          <div style={{ fontSize: 13.5, fontWeight: 700, color: '#fff', background: 'rgba(255,255,255,0.03)', padding: '8px 12px', borderRadius: 6, borderLeft: '3px solid var(--accent-purple)' }}>
+                            {aiInsights.ai_recommendation}
+                          </div>
+
+                          <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                            <strong>AI Rationale:</strong> {aiInsights.rationale}
+                          </div>
+
+                          {aiInsights.suggested_corrections && aiInsights.suggested_corrections.length > 0 && (
+                            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '10px 12px', borderRadius: 6 }}>
+                              <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--accent-amber)', marginBottom: 4 }}>
+                                ⚠️ Suggested Pre-Sanction Verifications:
+                              </div>
+                              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 11.5, color: 'var(--text-primary)', lineHeight: 1.5 }}>
+                                {aiInsights.suggested_corrections.map((corr, cIdx) => (
+                                  <li key={cIdx}>{corr}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Detailed Department Stages Audit Trail */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <Stamp size={14} color="var(--accent-cyan)" />
+                          Department Reviews &amp; Digital Signatures Audit Trail:
+                        </div>
+
+                        {(detailObj.workflow?.stages || []).map((s, idx) => (
+                          <div
+                            key={s.department_key}
+                            style={{
+                              padding: '10px 14px',
+                              borderRadius: 6,
+                              background: 'rgba(255,255,255,0.02)',
+                              border: '1px solid rgba(255,255,255,0.06)',
+                              display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8
+                            }}
+                          >
+                            <div style={{ flex: 1, minWidth: 240 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span style={{ fontSize: 12, fontWeight: 800, color: '#fff' }}>
+                                  {idx + 1}. {s.department_name}
+                                </span>
+                                <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, ...getStageBadge(s.status) }}>
+                                  {s.status}
+                                </span>
+                              </div>
+                              <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 4 }}>
+                                {s.description}
+                              </div>
+                              {s.comments && (
+                                <div style={{ fontSize: 12, color: 'var(--text-primary)', background: 'rgba(0,0,0,0.3)', padding: '6px 10px', borderRadius: 4, marginTop: 6, fontStyle: 'italic' }}>
+                                  &ldquo;{s.comments}&rdquo;
+                                </div>
+                              )}
+                            </div>
+
+                            <div style={{ textAlign: 'right', fontSize: 11, color: 'var(--text-muted)' }}>
+                              {s.reviewer_name && (
+                                <div style={{ fontWeight: 700, color: '#fff' }}>Signed by: {s.reviewer_name}</div>
+                              )}
+                              {s.reviewed_at && <div>{s.reviewed_at}</div>}
+                              {s.digital_signature && (
+                                <div style={{ fontFamily: 'monospace', color: 'var(--accent-blue)', marginTop: 2 }}>
+                                  {s.digital_signature}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                    </div>
+                  )}
+
+                  {/* ── CARD BOTTOM ACTION STRIP ── */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <button
+                        onClick={() => handleOpenActionModal(wf)}
+                        className="btn btn-primary"
+                        style={{ fontSize: 12, padding: '6px 14px', display: 'flex', alignItems: 'center', gap: 6 }}
+                      >
+                        <Stamp size={14} /> Take Department Action
+                      </button>
+
+                      {(wf.overall_status === 'FINAL_APPROVED' || wf.certificate) && (
+                        <button
+                          onClick={() => handleOpenCertificate(wf, detailObj?.workflow?.certificate)}
+                          className="btn btn-secondary"
+                          style={{ fontSize: 12, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 6, borderColor: 'var(--accent-green)', color: 'var(--accent-green)' }}
+                        >
+                          <Award size={14} /> View Sanction Certificate
+                        </button>
+                      )}
+
+                      <Link
+                        href={`/dpr/${wf.dpr_id}/viewer`}
+                        className="btn btn-secondary"
+                        style={{ fontSize: 12, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 6 }}
+                      >
+                        <Eye size={13} /> View DPR
+                      </Link>
+
+                      <Link
+                        href={`/recommendations?id=${wf.dpr_id}`}
+                        className="btn btn-secondary"
+                        style={{ fontSize: 12, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 6 }}
+                      >
+                        <Lightbulb size={13} /> Recommendations
+                      </Link>
+
+                      <Link
+                        href={`/ai-chatbot?id=${wf.dpr_id}`}
+                        className="btn btn-secondary"
+                        style={{ fontSize: 12, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 6 }}
+                      >
+                        <Send size={13} /> AI Chatbot
+                      </Link>
+                    </div>
+
+                    <button
+                      onClick={() => loadDprDetail(wf.dpr_id)}
+                      className="btn btn-secondary"
+                      style={{ fontSize: 11.5, padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
+                    >
+                      {isExpanded ? (
+                        <>Hide Workflow &amp; AI <ChevronUp size={13} /></>
+                      ) : (
+                        <>Inspect Audit &amp; AI <ChevronDown size={13} /></>
+                      )}
+                    </button>
+                  </div>
+
                 </div>
               );
-            })}
-          </div>
-        )}
+            })
+          )}
+        </div>
+
       </div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+
+      {/* ── 5. DEPARTMENT APPROVAL ACTION MODAL ── */}
+      {actionModalDpr && (
+        <div
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+          onClick={() => setActionModalDpr(null)}
+        >
+          <div
+            className="card"
+            style={{ maxWidth: 640, width: '100%', background: '#0f172a', border: '1px solid rgba(59,130,246,0.4)', padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Stamp size={18} color="var(--accent-blue)" />
+                <span style={{ fontSize: 16, fontWeight: 800, color: '#fff' }}>
+                  Execute Department Approval Action
+                </span>
+              </div>
+              <button onClick={() => setActionModalDpr(null)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
+              Project: <strong style={{ color: '#fff' }}>{actionModalDpr.project_title || actionModalDpr.dpr_id}</strong>
+            </div>
+
+            {/* Department Selector */}
+            <div>
+              <label style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
+                Reviewing Department Directorate:
+              </label>
+              <select
+                value={selectedDept}
+                onChange={e => handleDeptChange(e.target.value)}
+                className="select-field"
+                style={{ width: '100%', fontSize: 12.5, padding: '8px 10px' }}
+              >
+                {DEPARTMENTS.map(d => (
+                  <option key={d.key} value={d.key}>{d.name} ({d.role})</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Reviewer Name & Role */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
+                  Officer Name:
+                </label>
+                <input
+                  type="text"
+                  value={reviewerName}
+                  onChange={e => setReviewerName(e.target.value)}
+                  className="select-field"
+                  style={{ width: '100%', fontSize: 12 }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
+                  Designation / Role:
+                </label>
+                <input
+                  type="text"
+                  value={reviewerRole}
+                  onChange={e => setReviewerRole(e.target.value)}
+                  className="select-field"
+                  style={{ width: '100%', fontSize: 12 }}
+                />
+              </div>
+            </div>
+
+            {/* Decision Selector Buttons */}
+            <div>
+              <label style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
+                Approval Decision:
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedDecision('APPROVE')}
+                  style={{
+                    padding: '8px 10px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                    background: selectedDecision === 'APPROVE' ? 'rgba(34, 197, 94, 0.25)' : 'rgba(255,255,255,0.03)',
+                    border: selectedDecision === 'APPROVE' ? '1px solid var(--accent-green)' : '1px solid rgba(255,255,255,0.08)',
+                    color: selectedDecision === 'APPROVE' ? 'var(--accent-green)' : 'var(--text-secondary)'
+                  }}
+                >
+                  ✅ Approve &amp; Advance
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedDecision('REQUEST_CHANGES')}
+                  style={{
+                    padding: '8px 10px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                    background: selectedDecision === 'REQUEST_CHANGES' ? 'rgba(245, 158, 11, 0.25)' : 'rgba(255,255,255,0.03)',
+                    border: selectedDecision === 'REQUEST_CHANGES' ? '1px solid var(--accent-amber)' : '1px solid rgba(255,255,255,0.08)',
+                    color: selectedDecision === 'REQUEST_CHANGES' ? 'var(--accent-amber)' : 'var(--text-secondary)'
+                  }}
+                >
+                  ⚠️ Request Revision
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedDecision('REJECT')}
+                  style={{
+                    padding: '8px 10px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                    background: selectedDecision === 'REJECT' ? 'rgba(239, 68, 68, 0.25)' : 'rgba(255,255,255,0.03)',
+                    border: selectedDecision === 'REJECT' ? '1px solid #ef4444' : '1px solid rgba(255,255,255,0.08)',
+                    color: selectedDecision === 'REJECT' ? '#ef4444' : 'var(--text-secondary)'
+                  }}
+                >
+                  ❌ Reject DPR
+                </button>
+              </div>
+            </div>
+
+            {/* Comments Textarea */}
+            <div>
+              <label style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
+                Review Remarks / Technical Justification:
+              </label>
+              <textarea
+                rows={3}
+                placeholder="Enter mandatory audit findings, IRC compliance notes, or conditions for sanction..."
+                value={actionComments}
+                onChange={e => setActionComments(e.target.value)}
+                className="select-field"
+                style={{ width: '100%', fontSize: 12.5, lineHeight: 1.5 }}
+              />
+            </div>
+
+            {actionError && (
+              <div style={{ color: '#ef4444', fontSize: 12, background: 'rgba(239,68,68,0.1)', padding: '6px 10px', borderRadius: 4 }}>
+                {actionError}
+              </div>
+            )}
+
+            {/* Modal Actions */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 4 }}>
+              <button
+                type="button"
+                onClick={() => setActionModalDpr(null)}
+                className="btn btn-secondary"
+                disabled={submittingAction}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteAction}
+                className="btn btn-primary"
+                disabled={submittingAction}
+                style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                {submittingAction ? 'Signing Decision...' : 'Digitally Sign & Submit'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 6. OFFICIAL DIGITAL SANCTION CERTIFICATE MODAL ── */}
+      {certificateModalData && (
+        <div
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.9)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+          onClick={() => setCertificateModalData(null)}
+        >
+          <div
+            className="card"
+            style={{
+              maxWidth: 780, width: '100%', maxHeight: '90vh', overflowY: 'auto',
+              background: 'linear-gradient(135deg, #0b1329, #0f172a)',
+              border: '2px solid rgba(34, 197, 94, 0.45)', padding: 28,
+              boxShadow: '0 20px 50px rgba(0,0,0,0.8)'
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header with Karnataka Emblem / PWD Seal */}
+            <div style={{ textAlign: 'center', borderBottom: '2px double rgba(255,255,255,0.15)', paddingBottom: 16, marginBottom: 18 }}>
+              <div style={{ fontSize: 26, marginBottom: 4 }}>🏛️</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-green)', letterSpacing: '1px', textTransform: 'uppercase' }}>
+                GOVERNMENT OF KARNATAKA
+              </div>
+              <div style={{ fontSize: 18, fontWeight: 900, color: '#fff', marginTop: 2 }}>
+                PUBLIC WORKS DEPARTMENT (PWD)
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-cyan)', marginTop: 4 }}>
+                OFFICIAL TECHNICAL SANCTION &amp; ADMINISTRATIVE APPROVAL ORDER
+              </div>
+            </div>
+
+            {/* Certificate Details */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, background: 'rgba(255,255,255,0.03)', padding: 16, borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)' }}>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Sanction Order Number:</div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: '#fff', fontFamily: 'monospace' }}>
+                  {certificateModalData.certificate.sanction_order_no}
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Sanction Date:</div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: '#fff' }}>
+                  {certificateModalData.certificate.sanction_date}
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Project Title:</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-green)' }}>
+                  {certificateModalData.projectTitle}
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Sanctioned Budget Outlay:</div>
+                <div style={{ fontSize: 14, fontWeight: 900, color: 'var(--accent-green)' }}>
+                  ₹ {certificateModalData.cost?.toFixed(2)} Crores
+                </div>
+              </div>
+
+              <div style={{ gridColumn: 'span 2' }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Digital Verification Hash:</div>
+                <div style={{ fontSize: 12, fontFamily: 'monospace', color: 'var(--accent-blue)', wordBreak: 'break-all' }}>
+                  SHA256: {certificateModalData.certificate.digital_hash}
+                </div>
+              </div>
+            </div>
+
+            {/* 5-Department Signatures Grid */}
+            <div style={{ marginTop: 18 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: '#fff', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Multi-Department Sign-off Stamps:
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
+                {certificateModalData.stages.map((stg) => (
+                  <div
+                    key={stg.department_key}
+                    style={{
+                      padding: '10px 8px', borderRadius: 6, textAlign: 'center',
+                      background: 'rgba(34, 197, 94, 0.08)', border: '1px dashed rgba(34, 197, 94, 0.4)'
+                    }}
+                  >
+                    <div style={{ fontSize: 14 }}>✅</div>
+                    <div style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--accent-green)', marginTop: 2 }}>
+                      {stg.department_name.replace(' Review', '')}
+                    </div>
+                    <div style={{ fontSize: 9.5, color: 'var(--text-muted)', marginTop: 2 }}>
+                      {stg.reviewer_name?.split(' ')[0] || 'Director'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Bottom Seal Strip */}
+            <div style={{ marginTop: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 14 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                Issued by: <strong style={{ color: '#fff' }}>{certificateModalData.certificate.issued_by}</strong>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => window.print()}
+                  className="btn btn-secondary"
+                  style={{ fontSize: 11.5, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
+                >
+                  <Download size={13} /> Print Certificate
+                </button>
+                <button
+                  onClick={() => setCertificateModalData(null)}
+                  className="btn btn-primary"
+                  style={{ fontSize: 11.5, padding: '4px 12px' }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
     </>
   );
 }

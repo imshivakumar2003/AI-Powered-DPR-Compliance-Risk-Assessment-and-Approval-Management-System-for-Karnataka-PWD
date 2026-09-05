@@ -8,6 +8,8 @@ import {
   HelpCircle, Lightbulb, ExternalLink, Sliders
 } from 'lucide-react';
 
+import { fetchSettings } from '@/lib/api';
+
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -23,8 +25,8 @@ const QUICK_PROMPTS = [
   "How do I track my DPR application status?",
   "What clearances are needed for road DPRs in Karnataka?",
   "What is the standard contingency buffer per MoRTH?",
-  "Explain AI Quality and Risk Scores",
-  "Check high-risk DPR projects in Mysuru or Bengaluru",
+  "What are the Administrative & Technical Sanction powers?",
+  "What soil tests and CBR values are required for DPRs?",
 ];
 
 export function DprAiChatbot({ embedded = false }: { embedded?: boolean }) {
@@ -33,7 +35,7 @@ export function DprAiChatbot({ embedded = false }: { embedded?: boolean }) {
     {
       id: 'welcome',
       role: 'assistant',
-      content: 'Hello! I am **DPR-AI Assistant**, powered by **Groq AI** (`llama-3.3-70b-versatile`).\n\nHow can I help you with Karnataka PWD DPR applications, MoRTH guidelines, compliance checks, or application status tracking today?',
+      content: 'Hello! I am **DPR-AI Assistant**, an expert AI agent for Karnataka PWD Detailed Project Reports (DPRs).\n\nHow can I help you with DPR applications, MoRTH guidelines, IRC standards, Schedule of Rates (SoR 2025-26), environmental clearances (EIA/FCA), or application status tracking today?',
       timestamp: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
       model: 'llama-3.3-70b-versatile',
     },
@@ -54,8 +56,15 @@ export function DprAiChatbot({ embedded = false }: { embedded?: boolean }) {
       const savedKey = localStorage.getItem('groq_api_key') || '';
       setApiKey(savedKey);
       setTempApiKey(savedKey);
+      // Fetch persisted settings from backend as well
+      fetchSettings().then(s => {
+        if (s.groq_api_key) {
+          setApiKey(s.groq_api_key);
+          setTempApiKey(s.groq_api_key);
+        }
+      }).catch(e => console.error('Failed loading settings in chatbot:', e));
     } catch (e) {
-      console.error('Error reading localStorage:', e);
+      console.error('Error reading key in chatbot:', e);
     }
   }, []);
 

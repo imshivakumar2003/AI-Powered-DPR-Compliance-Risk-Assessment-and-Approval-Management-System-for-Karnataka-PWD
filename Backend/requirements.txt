@@ -6,3 +6,12 @@ python-multipart
 python-jose[cryptography]
 passlib[bcrypt]
 bcrypt
+pypdf
+pymupdf
+pdfplumber
+pdfminer.six
+pytesseract
+pillow
+pymongo
+scikit-learn
+requests

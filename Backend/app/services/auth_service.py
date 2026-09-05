@@ -430,6 +430,7 @@ class AppSettings(BaseModel):
     email_alerts: bool = True
     auto_assign: bool = True
     language: str = "en"
+    groq_api_key: Optional[str] = ""
 
 
 def get_settings() -> AppSettings:
@@ -444,6 +445,7 @@ def get_settings() -> AppSettings:
         email_alerts=rows.get("email_alerts", "1") == "1",
         auto_assign=rows.get("auto_assign", "1") == "1",
         language=rows.get("language", "en"),
+        groq_api_key=rows.get("groq_api_key", os.environ.get("GROQ_API_KEY", "")),
     )
 
 
@@ -456,6 +458,7 @@ def save_settings(s: AppSettings) -> AppSettings:
         ("email_alerts", "1" if s.email_alerts else "0"),
         ("auto_assign", "1" if s.auto_assign else "0"),
         ("language", s.language),
+        ("groq_api_key", s.groq_api_key or ""),
     ]
     for k, v in data:
         cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (k, v))

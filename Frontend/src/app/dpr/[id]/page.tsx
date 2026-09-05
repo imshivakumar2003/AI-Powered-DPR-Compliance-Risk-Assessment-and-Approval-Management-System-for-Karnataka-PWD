@@ -14,6 +14,7 @@ import {
   fetchDprQuality, fetchDprCompliance, fetchDprRisk, downloadDprReport,
   getUserHeaders, ProjectCompliance, QualityAssessment
 } from '@/lib/api';
+import { DprDocumentIntelligence } from '@/components/dpr/DprDocumentIntelligence';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -536,6 +537,11 @@ export default function DprDetailsPage() {
             </div>
           </div>
         )}
+
+        {/* ── Document Intelligence & RAG Engine ── */}
+        <div style={{ marginTop: 24, marginBottom: 20 }}>
+          <DprDocumentIntelligence projectId={dprId} projectTitle={project?.title} />
+        </div>
 
       </div>
     </>

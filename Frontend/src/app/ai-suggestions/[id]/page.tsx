@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Topbar } from '@/components/layout/Topbar';
-import { ArrowLeft, CheckCircle, AlertTriangle, XCircle, Send, Eye, RefreshCw } from 'lucide-react';
+import { ArrowLeft, CheckCircle, AlertTriangle, XCircle, Send, Eye, RefreshCw, Lightbulb } from 'lucide-react';
 import Link from 'next/link';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -258,7 +258,13 @@ export default function AiSuggestionDetailPage() {
         title="AI Category Analysis"
         subtitle={analysis?.title || dprId}
         actions={
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Link href={`/recommendations?id=${dprId}`} className="topbar-btn primary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Lightbulb size={14} /> Explainable Recommendations
+            </Link>
+            <Link href={`/ai-chatbot?id=${dprId}`} className="topbar-btn" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Send size={14} /> AI Chatbot
+            </Link>
             {project?.file_available && (
               <Link href={`/dpr/${dprId}/viewer`} className="topbar-btn">
                 <Eye size={14} /> View DPR

@@ -304,6 +304,7 @@ export interface AppSettings {
   email_alerts: boolean;
   auto_assign: boolean;
   language: string;
+  groq_api_key?: string;
 }
 
 export async function fetchSettings(): Promise<AppSettings> {
@@ -314,7 +315,7 @@ export async function fetchSettings(): Promise<AppSettings> {
   } catch (error) {
     console.error('Error fetching settings:', error);
     // Return safe defaults if backend is unreachable
-    return { risk_threshold: 70, email_alerts: true, auto_assign: true, language: 'en' };
+    return { risk_threshold: 70, email_alerts: true, auto_assign: true, language: 'en', groq_api_key: '' };
   }
 }
 
@@ -553,4 +554,666 @@ export async function fetchApplicationStatusDetail(projectId: string): Promise<a
     return null;
   }
 }
+
+// ── Document Intelligence, RAG & LLM Types & API ─────────────────────────────
+
+export interface ExtractedDocument {
+  project_id: string;
+  full_text: string;
+  total_pages: number;
+  word_count: number;
+  character_count: number;
+  extraction_method: string;
+  has_ocr: boolean;
+  metadata?: Record<string, any>;
+  created_at?: string;
+}
+
+export interface DocumentPage {
+  id?: string;
+  page_number: number;
+  text?: string;
+  page_text?: string;
+  word_count: number;
+  character_count: number;
+  is_ocr: boolean;
+}
+
+export interface RagChunk {
+  id?: string;
+  chunk_index: number;
+  page_number: number;
+  chunk_text: string;
+  heading: string;
+  token_count?: number;
+  score?: number;
+}
+
+export interface RagQueryResult {
+  project_id: string;
+  query: string;
+  answer: string;
+  cited_pages: number[];
+  chunks_used: RagChunk[];
+  engine: string;
+}
+
+export interface DprExtractedImage {
+  id?: string;
+  dpr_id: string;
+  page_number: number;
+  image_index: number;
+  filename: string;
+  image_url: string;
+  width: number;
+  height: number;
+  position_y: number;
+  image_type: string;
+  type_label: string;
+  ai_description: string;
+  ai_tags?: string[];
+  upload_timestamp?: string;
+}
+
+export interface MultiDocRagResult {
+  query: string;
+  answer: string;
+  cited_projects: string[];
+  cited_pages: number[];
+  chunks_used: Array<RagChunk & { project_id?: string; project_title?: string; image_url?: string; image_type?: string }>;
+  confidence_score: number;
+  engine: string;
+}
+
+export interface DqciDimension {
+  name: string;
+  max: number;
+  score: number;
+  feedback: string;
+}
+
+export interface DqciScore {
+  overall_dqci: number;
+  grade: string;
+  total_pages: number;
+  total_words: number;
+  total_images: number;
+  dimensions: DqciDimension[];
+  status: string;
+}
+
+export interface PavementLayer {
+  layer: string;
+  thickness: string;
+  standard: string;
+}
+
+export interface KnowledgeExtractionResult {
+  project_id: string;
+  briefings: {
+    title: string;
+    executive_summary: string;
+    technical_brief: string;
+    financial_brief: string;
+    clearances_brief: string;
+    risk_brief: string;
+    entities: {
+      pavement_layers: PavementLayer[];
+      geotechnical: Record<string, string>;
+      structures: Record<string, any>;
+      financial_audit: Record<string, any>;
+      statutory_standards: string[];
+      geographic_entities: Record<string, any>;
+    };
+  };
+  dqci: DqciScore;
+  entities: any;
+}
+
+export interface ComplianceAuditCheck {
+  code: string;
+  standard_title: string;
+  parameter: string;
+  requirement: string;
+  status: string;
+  observed_value: string;
+  risk_level: string;
+}
+
+export interface ComplianceAuditResult {
+  compliance_score: number;
+  total_checks: number;
+  passed_checks: number;
+  standard: string;
+  checks: ComplianceAuditCheck[];
+}
+
+export interface DprComparisonProject {
+  id: string;
+  title: string;
+  sector: string;
+  district: string;
+  status: string;
+  total_cost_cr: number;
+  civil_cost_cr: number;
+  land_acquisition_cr: number;
+  subgrade_cbr: string;
+  design_traffic: string;
+  design_speed: string;
+  total_pages: number;
+  word_count: number;
+  images_count: number;
+  dqci_score: number;
+}
+
+export interface DprComparisonResult {
+  total_projects_compared: number;
+  total_capital_outlay_cr: number;
+  average_project_cost_cr: number;
+  projects: DprComparisonProject[];
+}
+
+export interface LlmTechnicalSpecs {
+  pavement_type?: string;
+  lane_configuration?: string;
+  carriageway_width?: string;
+  design_speed?: string;
+  subgrade_cbr?: string;
+  total_length_km?: number;
+  major_bridges?: number;
+  minor_bridges?: number;
+  culverts?: number;
+}
+
+export interface LlmFinancialBreakdown {
+  civil_works_cost_cr?: number;
+  land_acquisition_cost_cr?: number;
+  utility_shifting_cost_cr?: number;
+  contingency_cost_cr?: number;
+  total_estimated_cost_cr?: number;
+  cost_per_km_cr?: number;
+}
+
+export interface LlmClearance {
+  name: string;
+  status: string;
+  details: string;
+}
+
+export interface LlmRisk {
+  risk: string;
+  severity: string;
+  mitigation: string;
+}
+
+export interface LlmCompliance {
+  standard: string;
+  status: string;
+  note: string;
+}
+
+export interface LlmInsights {
+  project_id: string;
+  summary: string;
+  objectives: string[];
+  technical_specs: LlmTechnicalSpecs;
+  financial_breakdown: LlmFinancialBreakdown;
+  clearances: LlmClearance[];
+  risks: LlmRisk[];
+  compliance: LlmCompliance[];
+  created_at?: string;
+}
+
+export async function fetchExtractedDocument(dprId: string): Promise<ExtractedDocument | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/dpr/${dprId}/extracted-document`, {
+      headers: getUserHeaders(),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.error('Error fetching extracted doc:', err);
+    return null;
+  }
+}
+
+export async function fetchExtractedPages(dprId: string): Promise<DocumentPage[]> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/dpr/${dprId}/extracted-pages`, {
+      headers: getUserHeaders(),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.pages || [];
+  } catch (err) {
+    console.error('Error fetching pages:', err);
+    return [];
+  }
+}
+
+export async function fetchRagChunks(dprId: string): Promise<RagChunk[]> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/dpr/${dprId}/rag/chunks`, {
+      headers: getUserHeaders(),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.chunks || [];
+  } catch (err) {
+    console.error('Error fetching RAG chunks:', err);
+    return [];
+  }
+}
+
+export async function queryDprRag(dprId: string, query: string, topK: number = 4): Promise<RagQueryResult | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/dpr/${dprId}/rag/query`, {
+      method: 'POST',
+      headers: {
+        ...getUserHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query, top_k: topK }),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.error('Error querying DPR RAG:', err);
+    return null;
+  }
+}
+
+export async function fetchLlmInsights(dprId: string): Promise<LlmInsights | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/dpr/${dprId}/llm/insights`, {
+      headers: getUserHeaders(),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.error('Error fetching LLM insights:', err);
+    return null;
+  }
+}
+
+export async function triggerDprIntelligenceExtraction(dprId: string): Promise<any> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/dpr/${dprId}/extract-intelligence`, {
+      method: 'POST',
+      headers: getUserHeaders(),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.error('Error triggering intelligence extraction:', err);
+    return null;
+  }
+}
+
+export async function fetchDprImages(dprId: string, pageNumber?: number): Promise<DprExtractedImage[]> {
+  try {
+    const url = pageNumber !== undefined
+      ? `${API_BASE_URL}/api/dpr/${dprId}/pages/${pageNumber}/images`
+      : `${API_BASE_URL}/api/dpr/${dprId}/images`;
+    const res = await fetch(url, { headers: getUserHeaders() });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.images || [];
+  } catch (err) {
+    console.error('Error fetching DPR images:', err);
+    return [];
+  }
+}
+
+export async function queryMultiDprRag(query: string, projectIds?: string[], topK: number = 6): Promise<MultiDocRagResult | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/dpr/rag/multi-query`, {
+      method: 'POST',
+      headers: {
+        ...getUserHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query, project_ids: projectIds, top_k: topK }),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.error('Error in multi-DPR RAG query:', err);
+    return null;
+  }
+}
+
+export async function fetchKnowledgeExtraction(dprId: string): Promise<KnowledgeExtractionResult | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/dpr/${dprId}/knowledge-extraction`, {
+      headers: getUserHeaders(),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.error('Error fetching knowledge extraction:', err);
+    return null;
+  }
+}
+
+export async function fetchComplianceAudit(dprId: string): Promise<ComplianceAuditResult | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/dpr/${dprId}/compliance-audit`, {
+      headers: getUserHeaders(),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.error('Error fetching compliance audit:', err);
+    return null;
+  }
+}
+
+export async function compareDprs(projectIds: string[]): Promise<DprComparisonResult | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/dpr/compare`, {
+      method: 'POST',
+      headers: {
+        ...getUserHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ project_ids: projectIds }),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.error('Error comparing DPRs:', err);
+    return null;
+  }
+}
+
+export interface ChatbotCitedImage {
+  filename: string;
+  image_url: string;
+  page_number: number;
+  image_type: string;
+  type_label: string;
+  ai_description: string;
+}
+
+export interface ChatbotQueryResponse {
+  dpr_id: string;
+  project_title: string;
+  query: string;
+  answer: string;
+  language: string;
+  direct_answer?: string;
+  simple_explanation?: string;
+  key_insights?: string[];
+  source_section?: string;
+  cited_pages: number[];
+  cited_images: ChatbotCitedImage[];
+  follow_up_suggestions: string[];
+  guidelines_applied: string[];
+  confidence_score: number;
+  confidence_level?: string;
+  engine: string;
+}
+
+export async function queryAiChatbot(
+  dprId: string,
+  query: string,
+  language: string = 'en',
+  conversationHistory?: Array<{ role: string; content: string }>
+): Promise<ChatbotQueryResponse | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/chatbot/query`, {
+      method: 'POST',
+      headers: {
+        ...getUserHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        dpr_id: dprId,
+        query,
+        language,
+        conversation_history: conversationHistory,
+      }),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.error('Error querying AI Chatbot:', err);
+    return null;
+  }
+}
+
+export async function exportChatTranscript(
+  dprId: string,
+  messages: any[]
+): Promise<{ dpr_id: string; filename: string; transcript: string } | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/chatbot/export-transcript`, {
+      method: 'POST',
+      headers: {
+        ...getUserHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ dpr_id: dprId, messages }),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.error('Error exporting chat transcript:', err);
+    return null;
+  }
+}
+
+export interface ExplainableRecommendation {
+  id: string;
+  category: string;
+  priority: string;
+  impact: string;
+  confidence_score: number;
+  title: string;
+  reason: string;
+  explanation: string;
+  description?: string;
+  dpr_page_numbers: number[];
+  dpr_section_name: string;
+  supporting_evidence: string;
+  guideline_reference: string;
+  suggested_action: string;
+  actionable_steps: string[];
+}
+
+export interface DprInsightsDashboard {
+  dpr_id: string;
+  project_title: string;
+  sector: string;
+  district: string;
+  estimated_cost_cr: number;
+  compliance_score: number;
+  dqci_quality_score: number;
+  dqci_grade: string;
+  cost_risk_score: string;
+  schedule_risk_score: string;
+  approval_readiness_score: number;
+  missing_information_alerts: string[];
+  top_risks: Array<{ risk: string; impact: string; mitigation: string }>;
+}
+
+export interface DprDeepRecommendationsResult {
+  dpr_id: string;
+  project_title: string;
+  total_recommendations: number;
+  critical_count: number;
+  high_count: number;
+  dashboard: DprInsightsDashboard;
+  recommendations: ExplainableRecommendation[];
+}
+
+export async function fetchDprDeepRecommendations(dprId: string): Promise<DprDeepRecommendationsResult | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/dpr/${dprId}/recommendations`, {
+      headers: getUserHeaders(),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.error('Error fetching deep recommendations:', err);
+    return null;
+  }
+}
+
+export interface DepartmentStage {
+  stage_index: number;
+  department_key: string;
+  department_name: string;
+  authority: string;
+  role_title: string;
+  description: string;
+  status: 'PENDING' | 'IN_REVIEW' | 'APPROVED' | 'CHANGES_REQUESTED' | 'REJECTED';
+  reviewer_name?: string | null;
+  reviewer_role?: string | null;
+  comments?: string;
+  digital_signature?: string | null;
+  reviewed_at?: string | null;
+}
+
+export interface ApprovalCertificate {
+  sanction_order_no: string;
+  digital_hash: string;
+  issued_by: string;
+  approving_authority: string;
+  allotted_budget_cr: number;
+  sanction_date: string;
+  status: string;
+  qr_verification_url: string;
+}
+
+export interface DprApprovalWorkflow {
+  dpr_id: string;
+  current_stage: string;
+  overall_status: 'PENDING_REVIEW' | 'IN_REVIEW' | 'IN_PROGRESS' | 'NEEDS_REVISION' | 'REJECTED' | 'FINAL_APPROVED' | string;
+  stages: DepartmentStage[];
+  certificate?: ApprovalCertificate | null;
+  project_title?: string;
+  sector?: string;
+  estimated_cost?: number;
+  state?: string;
+  upload_date?: string;
+}
+
+export interface AiApprovalAssistantInsights {
+  dpr_id: string;
+  ai_recommendation: string;
+  recommendation_badge: 'RECOMMEND_APPROVAL' | 'CONDITIONAL_APPROVAL' | 'RECOMMEND_REVISION';
+  rationale: string;
+  compliance_score: number;
+  dqci_quality_score: number;
+  dqci_grade: string;
+  risk_score: number;
+  approval_readiness_score: number;
+  suggested_corrections: string[];
+  pavement_summary: string;
+  subgrade_cbr: string;
+  total_cost_cr: number;
+}
+
+export interface DprWorkflowDetailResponse {
+  dpr_id: string;
+  project_title: string;
+  sector: string;
+  estimated_cost: number;
+  district: string;
+  state: string;
+  status: string;
+  workflow: DprApprovalWorkflow;
+  ai_insights: AiApprovalAssistantInsights;
+}
+
+export interface ApprovalsDashboardKpis {
+  total_dprs: number;
+  pending_approvals: number;
+  approved_dprs: number;
+  rejected_dprs: number;
+  needs_revision: number;
+  completion_percentage: number;
+  average_turnaround_days: number;
+  department_pending_counts: Record<string, number>;
+  workflows: DprApprovalWorkflow[];
+}
+
+export async function fetchApprovalsDashboard(): Promise<ApprovalsDashboardKpis | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/approvals/dashboard`, {
+      headers: getUserHeaders(),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.error('Error fetching approvals dashboard:', err);
+    return null;
+  }
+}
+
+export async function fetchDprWorkflowDetail(dprId: string): Promise<DprWorkflowDetailResponse | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/dpr/${dprId}/workflow`, {
+      headers: getUserHeaders(),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.error('Error fetching DPR workflow detail:', err);
+    return null;
+  }
+}
+
+export async function submitDepartmentApprovalAction(
+  dprId: string,
+  department: string,
+  decision: 'APPROVE' | 'REJECT' | 'REQUEST_CHANGES',
+  reviewerName: string,
+  reviewerRole: string,
+  comments: string
+): Promise<{ success: boolean; error?: string; certificate?: ApprovalCertificate } | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/dpr/${dprId}/workflow/action`, {
+      method: 'POST',
+      headers: {
+        ...getUserHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        department,
+        decision,
+        reviewer_name: reviewerName,
+        reviewer_role: reviewerRole,
+        comments,
+      }),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      return { success: false, error: errData.detail || 'Failed to process approval action' };
+    }
+    return await res.json();
+  } catch (err) {
+    console.error('Error submitting approval action:', err);
+    return { success: false, error: 'Network or server error' };
+  }
+}
+
+export async function fetchDprCertificate(dprId: string): Promise<any | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/dpr/${dprId}/certificate`, {
+      headers: getUserHeaders(),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.error('Error fetching certificate:', err);
+    return null;
+  }
+}
+
+
+
+
 

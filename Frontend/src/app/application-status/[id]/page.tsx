@@ -1,21 +1,38 @@
 // TOPLINE
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
-import { useParams } from 'next/navigation';
+import React, { useEffect, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import { Topbar } from '@/components/layout/Topbar';
 import Link from 'next/link';
 import { useUser } from '@/lib/UserContext';
 import {
-  ArrowLeft, CheckCircle, XCircle, Clock, Brain, Eye,
-  AlertTriangle, Send, Upload, Bell, BellOff, FileText,
-  RefreshCw, Download, Printer, ChevronDown, ChevronUp,
-  History, MessageSquare, GitBranch, Shield,
+  ArrowLeft, CheckCircle2, XCircle, Clock, Eye,
+  AlertTriangle, Send, Download, RefreshCw, FileText,
+  Building2, MessageSquare, History, Check, X
 } from 'lucide-react';
-
 import { getUserHeaders } from '@/lib/api';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+const API = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+
+interface DepartmentTrackItem {
+  department_key: string;
+  department_name: string;
+  assigned_officer: string;
+  role_title: string;
+  review_status: 'APPROVED' | 'IN_REVIEW' | 'PENDING' | 'CHANGES_REQUESTED' | 'REJECTED';
+  approval_date: string | null;
+  comments: string;
+  pending_days: number;
+  sla_status: 'ON_TRACK' | 'AT_RISK' | 'BREACHED' | 'COMPLETED' | 'TERMINATED';
+}
+
+interface StageItem {
+  index: number;
+  key: string;
+  label: string;
+  pct: number;
+}
 
 interface Comment {
   id: string;
@@ -36,789 +53,514 @@ interface TimelineEvent {
   created_at: string;
 }
 
-interface DprVersion {
-  id: string;
-  version_number: number;
-  original_filename: string;
-  uploaded_by: string;
-  upload_date: string;
-  notes: string | null;
-}
-
-interface Notification {
-  id: string;
-  event_type: string;
-  message: string;
-  is_read: number;
-  created_at: string;
-}
-
 interface AppDetail {
   id: string;
+  ref_number: string;
   title: string;
   original_filename: string;
   district: string;
+  state: string;
   sector: string;
   department: string;
   submitted_by: string;
   upload_date: string;
   status: string;
-  reviewed_by: string | null;
-  reviewer_name: string | null;
-  reviewed_at: string | null;
-  overall_score: number | null;
-  risk_score: number | null;
-  compliance_score: number | null;
-  estimated_cost: number;
-  duration_months: number;
-  approval_comment: string | null;
+  overall_status: string;
+  granular_status: string;
+  current_department: string;
+  current_approver: string;
   progress_pct: number;
   step_index: number;
-  ref_number: string;
-  steps: string[];
+  nine_stages: StageItem[];
+  expected_completion_date: string;
+  priority_level: string;
+  estimated_cost: number;
+  duration_months: number;
+  department_tracking: DepartmentTrackItem[];
   comments: Comment[];
   timeline: TimelineEvent[];
-  versions: DprVersion[];
-  notifications: Notification[];
+  certificate?: any;
+  approval_comment: string | null;
 }
 
-const API = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function fmtDateTime(iso: string | null): string {
-  if (!iso) return '—';
-  try {
-    return new Date(iso).toLocaleString('en-IN', {
-      day: '2-digit', month: 'short', year: 'numeric',
-      hour: '2-digit', minute: '2-digit',
-    });
-  } catch { return iso.slice(0, 16); }
+function getStatusBadge(status: string) {
+  const s = (status || '').toUpperCase();
+  if (s.includes('APPROVED') || s === 'FINAL_APPROVED') return { label: 'Final Approved', bg: 'rgba(34,197,94,0.15)', color: 'var(--accent-green)', border: '1px solid rgba(34,197,94,0.35)', icon: <CheckCircle2 size={13} /> };
+  if (s.includes('REJECT')) return { label: 'Rejected', bg: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.35)', icon: <XCircle size={13} /> };
+  if (s.includes('REVISION') || s.includes('CHANGES')) return { label: 'Returned for Revision', bg: 'rgba(245,158,11,0.15)', color: 'var(--accent-amber)', border: '1px solid rgba(245,158,11,0.35)', icon: <AlertTriangle size={13} /> };
+  return { label: 'In Department Review', bg: 'rgba(59,130,246,0.15)', color: 'var(--accent-blue)', border: '1px solid rgba(59,130,246,0.35)', icon: <Clock size={13} /> };
 }
 
-function relTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const min = Math.floor(diff / 60_000);
-  if (min < 1) return 'just now';
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  return `${Math.floor(hr / 24)}d ago`;
+function getSlaBadge(sla: string) {
+  if (sla === 'COMPLETED') return { label: 'Completed', color: 'var(--accent-green)', bg: 'rgba(34,197,94,0.15)' };
+  if (sla === 'AT_RISK') return { label: 'SLA At Risk', color: 'var(--accent-amber)', bg: 'rgba(245,158,11,0.15)' };
+  if (sla === 'BREACHED') return { label: 'SLA Breached', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' };
+  return { label: 'On Track', color: 'var(--accent-blue)', bg: 'rgba(59,130,246,0.15)' };
 }
-
-const STATUS_CFG: Record<string, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
-  PENDING:      { label: 'Pending',      color: '#f59e0b', bg: 'rgba(245,158,11,0.1)',  icon: <Clock size={12}/> },
-  PROCESSING:   { label: 'AI Analysis',  color: '#8b5cf6', bg: 'rgba(139,92,246,0.1)', icon: <Brain size={12}/> },
-  UNDER_REVIEW: { label: 'Under Review', color: '#fb923c', bg: 'rgba(251,146,60,0.1)', icon: <Eye size={12}/> },
-  PENDING_INFO: { label: 'Pending Info', color: '#eab308', bg: 'rgba(234,179,8,0.1)',  icon: <AlertTriangle size={12}/> },
-  APPROVED:     { label: 'Approved',     color: '#22c55e', bg: 'rgba(34,197,94,0.1)',  icon: <CheckCircle size={12}/> },
-  REJECTED:     { label: 'Rejected',     color: '#ef4444', bg: 'rgba(239,68,68,0.1)',  icon: <XCircle size={12}/> },
-};
-
-function StatusBadge({ status }: { status: string }) {
-  const cfg = STATUS_CFG[status?.toUpperCase()] || STATUS_CFG.PENDING;
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12,
-      fontWeight: 700, padding: '4px 10px', borderRadius: 7,
-      background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}40` }}>
-      {cfg.icon} {cfg.label}
-    </span>
-  );
-}
-
-// ─── Progress Timeline ────────────────────────────────────────────────────────
-
-function ProgressTimeline({ steps, currentIdx, status }: { steps: string[]; currentIdx: number; status: string }) {
-  const statusCfg = STATUS_CFG[status?.toUpperCase()] || STATUS_CFG.PENDING;
-  return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0, overflowX: 'auto', paddingBottom: 4 }}>
-      {steps.map((step, i) => {
-        const isCompleted = i < currentIdx;
-        const isCurrent = i === currentIdx;
-        const isFinal = i === steps.length - 1;
-        const stepColor = isCurrent
-          ? statusCfg.color
-          : isCompleted
-            ? '#22c55e'
-            : 'rgba(255,255,255,0.1)';
-        const textColor = isCurrent ? statusCfg.color : isCompleted ? '#22c55e' : 'var(--text-muted)';
-
-        return (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', flex: isFinal ? 'none' : 1 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 80 }}>
-              {/* Circle */}
-              <div style={{
-                width: 36, height: 36, borderRadius: '50%',
-                background: isCurrent ? stepColor : isCompleted ? '#22c55e' : 'var(--bg-secondary)',
-                border: `2px solid ${stepColor}`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: isCurrent ? `0 0 12px ${stepColor}50` : 'none',
-                transition: 'all 0.3s',
-                flexShrink: 0,
-              }}>
-                {isCompleted
-                  ? <CheckCircle size={16} color="white" />
-                  : isCurrent
-                    ? (i === steps.length - 1
-                      ? (status === 'APPROVED' ? <CheckCircle size={16} color="white" /> : <XCircle size={16} color="white" />)
-                      : <div style={{ width: 10, height: 10, borderRadius: '50%', background: 'white' }} />)
-                    : <div style={{ width: 8, height: 8, borderRadius: '50%', background: stepColor }} />
-                }
-              </div>
-              {/* Label */}
-              <div style={{ marginTop: 8, fontSize: 10, fontWeight: isCurrent ? 700 : 500,
-                color: textColor, textAlign: 'center', lineHeight: 1.3, maxWidth: 74, wordBreak: 'break-word' }}>
-                {step}
-              </div>
-              {isCurrent && (
-                <div style={{ marginTop: 3, fontSize: 9, color: statusCfg.color, fontWeight: 700,
-                  textTransform: 'uppercase', letterSpacing: '0.5px' }}>← Current</div>
-              )}
-            </div>
-            {/* Connector */}
-            {!isFinal && (
-              <div style={{ flex: 1, height: 2, margin: '-18px 4px 0',
-                background: isCompleted ? '#22c55e' : 'rgba(255,255,255,0.08)', borderRadius: 1 }} />
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ─── Chat Bubble ─────────────────────────────────────────────────────────────
-
-function ChatBubble({ comment }: { comment: Comment }) {
-  const isReviewer = comment.author_role === 'reviewer';
-  const bg = isReviewer ? 'rgba(59,130,246,0.1)' : 'rgba(34,197,94,0.08)';
-  const borderColor = isReviewer ? 'rgba(59,130,246,0.2)' : 'rgba(34,197,94,0.2)';
-  const nameColor = isReviewer ? 'var(--accent-blue-light)' : '#4ade80';
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column',
-      alignItems: isReviewer ? 'flex-start' : 'flex-end', marginBottom: 14 }}>
-      <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginBottom: 4,
-        display: 'flex', gap: 6, alignItems: 'center' }}>
-        <span style={{ fontWeight: 700, color: nameColor }}>{comment.author_name}</span>
-        <span style={{ background: `${isReviewer ? '#3b82f6' : '#22c55e'}18`,
-          color: isReviewer ? '#60a5fa' : '#4ade80',
-          padding: '1px 6px', borderRadius: 4, fontSize: 9, fontWeight: 700,
-          textTransform: 'uppercase' }}>
-          {isReviewer ? 'Reviewer' : 'User'}
-        </span>
-        <span>{relTime(comment.created_at)}</span>
-      </div>
-      <div style={{ maxWidth: '80%', padding: '10px 14px', borderRadius: isReviewer ? '4px 14px 14px 14px' : '14px 4px 14px 14px',
-        background: bg, border: `1px solid ${borderColor}`, fontSize: 12.5,
-        color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-        {comment.message}
-        {comment.attachment_filename && (
-          <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6,
-            fontSize: 11, color: 'var(--accent-blue-light)', fontWeight: 600 }}>
-            <FileText size={12} /> {comment.attachment_filename}
-          </div>
-        )}
-      </div>
-      <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>
-        {fmtDateTime(comment.created_at)}
-      </div>
-    </div>
-  );
-}
-
-// ─── Timeline Event ───────────────────────────────────────────────────────────
-
-const EVENT_ICONS: Record<string, { icon: React.ReactNode; color: string }> = {
-  upload:           { icon: <Upload size={13} />,       color: '#3b82f6' },
-  ai_analysis:      { icon: <Brain size={13} />,         color: '#8b5cf6' },
-  reviewer_comment: { icon: <MessageSquare size={13} />, color: '#fb923c' },
-  user_reply:       { icon: <Send size={13} />,          color: '#22c55e' },
-  revision_upload:  { icon: <GitBranch size={13} />,     color: '#06b6d4' },
-  status_approved:  { icon: <CheckCircle size={13} />,   color: '#22c55e' },
-  status_rejected:  { icon: <XCircle size={13} />,       color: '#ef4444' },
-  status_pending:   { icon: <Clock size={13} />,         color: '#f59e0b' },
-  status_under_review: { icon: <Eye size={13} />,        color: '#fb923c' },
-  default:          { icon: <History size={13} />,       color: 'var(--text-muted)' },
-};
-
-function TimelineItem({ event, isLast }: { event: TimelineEvent; isLast: boolean }) {
-  const cfg = EVENT_ICONS[event.event_type] || EVENT_ICONS.default;
-  return (
-    <div style={{ display: 'flex', gap: 12, position: 'relative' }}>
-      {/* Vertical line */}
-      {!isLast && (
-        <div style={{ position: 'absolute', left: 16, top: 32, bottom: -14, width: 1,
-          background: 'rgba(255,255,255,0.06)' }} />
-      )}
-      {/* Icon circle */}
-      <div style={{ width: 32, height: 32, borderRadius: '50%', background: `${cfg.color}18`,
-        border: `1px solid ${cfg.color}30`, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: cfg.color, flexShrink: 0, zIndex: 1 }}>
-        {cfg.icon}
-      </div>
-      <div style={{ flex: 1, paddingBottom: isLast ? 0 : 16, minWidth: 0 }}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-primary)' }}>{event.title}</span>
-          <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{relTime(event.created_at)}</span>
-        </div>
-        <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', lineHeight: 1.5, marginTop: 2 }}>
-          {event.description}
-        </div>
-        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>
-          By <strong style={{ color: cfg.color }}>{event.actor_name}</strong>
-          {' · '}{fmtDateTime(event.created_at)}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Notification Item ────────────────────────────────────────────────────────
-
-function NotifItem({ n }: { n: Notification }) {
-  const isUnread = n.is_read === 0;
-  return (
-    <div style={{ display: 'flex', gap: 10, padding: '10px 0',
-      borderBottom: '1px solid rgba(45,55,72,0.4)', opacity: isUnread ? 1 : 0.6 }}>
-      <div style={{ width: 8, height: 8, borderRadius: '50%', background: isUnread ? '#3b82f6' : 'transparent',
-        border: isUnread ? '' : '1px solid var(--border)', flexShrink: 0, marginTop: 4 }} />
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>{n.message}</div>
-        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>{fmtDateTime(n.created_at)}</div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Main Detail Page ─────────────────────────────────────────────────────────
 
 export default function ApplicationStatusDetailPage() {
   const params = useParams();
-  const id = params?.id as string;
+  const projectId = params?.id as string;
+  const router = useRouter();
   const { user } = useUser();
 
-  const [data, setData] = useState<AppDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [accessDenied, setAccessDenied] = useState(false);
-  const [activeTab, setActiveTab] = useState<'timeline' | 'chat' | 'versions' | 'notifications'>('timeline');
+  const [detail, setDetail] = useState<AppDetail | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string>('');
 
-  // Reply form
-  const [replyMsg, setReplyMsg] = useState('');
-  const [replyFile, setReplyFile] = useState<File | null>(null);
-  const [sendingReply, setSendingReply] = useState(false);
+  // New Comment state
+  const [newComment, setNewComment] = useState<string>('');
+  const [submittingComment, setSubmittingComment] = useState<boolean>(false);
 
-  // Revision upload form
-  const [revisionFile, setRevisionFile] = useState<File | null>(null);
-  const [revisionNotes, setRevisionNotes] = useState('');
-  const [uploadingRevision, setUploadingRevision] = useState(false);
+  // Language state
+  const [language, setLanguage] = useState<'en' | 'kn' | 'hi'>('en');
 
-  // Sections expand/collapse
-  const [infoExpanded, setInfoExpanded] = useState(true);
-
-  const chatEndRef = useRef<HTMLDivElement>(null);
-
-  const load = async () => {
+  const fetchDetail = async () => {
+    if (!projectId) return;
     try {
-      const res = await fetch(`${API}/api/application-status/${id}`, { headers: getUserHeaders() });
-      if (res.status === 403) {
-        setAccessDenied(true);
-        setLoading(false);
-        return;
-      }
-      if (res.ok) {
-        setData(await res.json());
-      }
+      setLoading(true);
+      const res = await fetch(`${API}/api/application-status/${projectId}`, {
+        headers: getUserHeaders(),
+      });
+      if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+      const data = await res.json();
+      setDetail(data);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load application detail');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (id) load();
-  }, [id]);
+    fetchDetail();
+  }, [projectId]);
 
-  useEffect(() => {
-    if (activeTab === 'chat') {
-      setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
-    }
-  }, [activeTab, data?.comments]);
-
-  const sendReply = async () => {
-    if (!replyMsg.trim() || !data) return;
-    setSendingReply(true);
+  const handlePostComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newComment.trim()) return;
+    setSubmittingComment(true);
     try {
-      const form = new FormData();
-      form.append('author_role', user.role === 'state_reviewer' || user.role === 'admin' ? 'reviewer' : 'user');
-      form.append('author_name', user.displayName || user.username || data.submitted_by || 'User');
-      form.append('message', replyMsg);
-      if (replyFile) form.append('file', replyFile);
-      await fetch(`${API}/api/application-status/${id}/comment-with-file`, { method: 'POST', body: form });
-      setReplyMsg('');
-      setReplyFile(null);
-      await load();
+      const res = await fetch(`${API}/api/application-status/${projectId}/comment`, {
+        method: 'POST',
+        headers: {
+          ...getUserHeaders(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          author_role: user?.role || 'Applicant',
+          author_name: user?.username || 'Applicant',
+          message: newComment.trim(),
+        }),
+      });
+      if (res.ok) {
+        setNewComment('');
+        fetchDetail();
+      }
+    } catch (err) {
+      console.error('Error posting comment:', err);
     } finally {
-      setSendingReply(false);
+      setSubmittingComment(false);
     }
   };
-
-  const uploadRevision = async () => {
-    if (!revisionFile || !data) return;
-    setUploadingRevision(true);
-    try {
-      const form = new FormData();
-      form.append('file', revisionFile);
-      form.append('uploaded_by', user.displayName || user.username || data.submitted_by || 'User');
-      form.append('notes', revisionNotes);
-      await fetch(`${API}/api/application-status/${id}/upload-revision`, { method: 'POST', body: form });
-      setRevisionFile(null);
-      setRevisionNotes('');
-      await load();
-    } finally {
-      setUploadingRevision(false);
-    }
-  };
-
-  const markRead = async () => {
-    await fetch(`${API}/api/application-status/${id}/notifications/read?role=user`, { method: 'POST' });
-    await load();
-  };
-
-  const isAdminRole = ['admin', 'administrator', 'director', 'state_reviewer', 'reviewer', 'approver'].includes(user.role?.toLowerCase() || '');
-  const isPriya = (user.username || '').toLowerCase().includes('priya') || (user.displayName || '').toLowerCase().includes('priya');
-  const isFullUser = (user.username || '').toLowerCase().trim() === 'user' || (user.displayName || '').toLowerCase().includes('project requester');
-  const isAuthorized = isAdminRole || isPriya || isFullUser;
-
-  if (accessDenied) {
-    return (
-      <>
-        <Topbar title="Access Restricted" subtitle="Admin & Priya Sharma Access Only" />
-        <div className="page-content" style={{ padding: '60px 20px', textAlign: 'center', maxWidth: 600, margin: '0 auto' }}>
-          <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(239,68,68,0.12)',
-            border: '2px solid rgba(239,68,68,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            margin: '0 auto 20px', color: '#ef4444' }}>
-            <AlertTriangle size={32} />
-          </div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, color: 'var(--text-primary)', marginBottom: 8 }}>
-            Access Restricted: Admin & Priya Sharma Only
-          </h2>
-          <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 24 }}>
-            Under Karnataka PWD Role-Based Access Control, access to view Application Status details, timelines, status history, and reviewer notes is restricted exclusively to Admin and Priya Sharma.
-          </p>
-          <Link href="/application-status" style={{
-            display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 22px', borderRadius: 8,
-            background: 'var(--accent-blue)', color: 'white', fontWeight: 700, fontSize: 13, textDecoration: 'none'
-          }}>
-            <ArrowLeft size={16} /> Return to My Application Status
-          </Link>
-        </div>
-      </>
-    );
-  }
 
   if (loading) {
     return (
       <>
-        <Topbar title="Application Status" subtitle="Loading…" />
-        <div className="page-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400 }}>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ width: 44, height: 44, borderRadius: '50%', border: '3px solid var(--border)',
-              borderTopColor: 'var(--accent-blue)', margin: '0 auto 14px', animation: 'spin 1s linear infinite' }} />
-            <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading DPR details…</div>
+        <Topbar title="Application Tracking" subtitle="Loading application status..." />
+        <div className="page-content" style={{ textAlign: 'center', padding: 40 }}>
+          <RefreshCw size={24} className="spin-icon" style={{ margin: '0 auto 10px', color: 'var(--accent-blue)' }} />
+          <div style={{ color: 'var(--text-muted)' }}>Retrieving 9-stage workflow status from Karnataka PWD...</div>
+        </div>
+      </>
+    );
+  }
+
+  if (error || !detail) {
+    return (
+      <>
+        <Topbar title="Application Tracking" subtitle="Error" />
+        <div className="page-content">
+          <div className="card" style={{ padding: 30, textAlign: 'center' }}>
+            <AlertTriangle size={36} color="var(--accent-amber)" style={{ margin: '0 auto 10px' }} />
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#fff' }}>Failed to load application status</div>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>{error || 'Project not found.'}</div>
+            <Link href="/application-status" className="btn btn-primary" style={{ display: 'inline-flex', marginTop: 16 }}>
+              <ArrowLeft size={14} /> Back to Applications List
+            </Link>
           </div>
         </div>
       </>
     );
   }
 
-  if (!data) {
-    return (
-      <>
-        <Topbar title="Not Found" />
-        <div className="page-content" style={{ textAlign: 'center', padding: 80 }}>
-          <div style={{ fontSize: 15, color: 'var(--text-secondary)' }}>DPR not found.</div>
-          <Link href="/application-status" style={{ display: 'inline-flex', gap: 6, marginTop: 16, alignItems: 'center',
-            color: 'var(--accent-blue-light)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
-            <ArrowLeft size={14} /> Back to list
-          </Link>
-        </div>
-      </>
-    );
-  }
-
-  const statusCfg = STATUS_CFG[data.status?.toUpperCase()] || STATUS_CFG.PENDING;
-  const isPendingInfo = data.status?.toUpperCase() === 'PENDING_INFO' || data.status?.toUpperCase() === 'PENDING';
-  const unreadCount = data.notifications.filter(n => n.is_read === 0).length;
-  const nextVersion = (data.versions.length + 1);
+  const statusStyle = getStatusBadge(detail.granular_status || detail.overall_status);
+  const isFinalApproved = String(detail.overall_status || '').toUpperCase().includes('APPROVED');
 
   return (
     <>
       <Topbar
-        title="Application Status Detail"
-        subtitle={`${data.ref_number} · ${data.title}`}
+        title={detail.title}
+        subtitle={`DPR ID: ${detail.ref_number} · ${detail.district}, ${detail.state || 'Karnataka'} · ₹${detail.estimated_cost?.toFixed(1)} Cr`}
         actions={
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Link href="/application-status" className="topbar-btn"
-              style={{ display: 'flex', alignItems: 'center', gap: 6, textDecoration: 'none' }}>
-              <ArrowLeft size={13} /> Back
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {/* Multi-language Selector */}
+            <div style={{ display: 'flex', background: 'rgba(255,255,255,0.06)', borderRadius: 6, padding: 2 }}>
+              {(['en', 'kn', 'hi'] as const).map(l => (
+                <button
+                  key={l}
+                  onClick={() => setLanguage(l)}
+                  style={{
+                    background: language === l ? 'var(--accent-blue)' : 'transparent',
+                    color: language === l ? '#fff' : 'var(--text-muted)',
+                    border: 'none', borderRadius: 4, padding: '3px 8px', fontSize: 11, fontWeight: 700, cursor: 'pointer'
+                  }}
+                >
+                  {l === 'en' ? 'EN' : l === 'kn' ? 'ಕನ್ನಡ' : 'हिन्दी'}
+                </button>
+              ))}
+            </div>
+
+            {/* Dynamic Status-Based Report Download Action */}
+            {isFinalApproved ? (
+              <a
+                href={`${API}/api/dpr/${detail.id}/final-approved-report/pdf`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="topbar-btn"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  background: 'rgba(34,197,94,0.2)', color: 'var(--accent-green)',
+                  border: '1px solid rgba(34,197,94,0.45)', fontWeight: 800, fontSize: 12, padding: '5px 12px'
+                }}
+              >
+                <CheckCircle2 size={15} /> Download Final Report (PDF)
+              </a>
+            ) : String(detail.overall_status || '').toUpperCase().includes('REJECT') ? (
+              <a
+                href={`${API}/api/dpr/${detail.id}/rejection-report/pdf`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="topbar-btn"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  background: 'rgba(239,68,68,0.2)', color: '#ef4444',
+                  border: '1px solid rgba(239,68,68,0.45)', fontWeight: 800, fontSize: 12, padding: '5px 12px'
+                }}
+              >
+                <XCircle size={15} /> Download Rejection Report (PDF)
+              </a>
+            ) : (
+              <a
+                href={`${API}/api/dpr/${detail.id}/status-report/pdf`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="topbar-btn"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  background: 'rgba(59,130,246,0.2)', color: 'var(--accent-blue)',
+                  border: '1px solid rgba(59,130,246,0.45)', fontWeight: 800, fontSize: 12, padding: '5px 12px'
+                }}
+              >
+                <Clock size={15} /> Download Status Report (PDF)
+              </a>
+            )}
+
+            <Link href={`/dpr/${detail.id}/viewer`} className="topbar-btn secondary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <FileText size={14} /> View DPR Document
             </Link>
-            <button onClick={() => window.print()} className="topbar-btn" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Printer size={13} /> Print
-            </button>
-            <a href={`${API}/api/report/${data.id}`} download={`Karnataka_PWD_DPR_Report_${data.id}.txt`} className="topbar-btn"
-              style={{ display: 'flex', alignItems: 'center', gap: 6, textDecoration: 'none' }} target="_blank">
-              <Download size={13} /> AI Report
-            </a>
           </div>
         }
       />
 
-      <div className="page-content fade-in">
+      <div className="page-content fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-        {/* ── Hero Status Banner ── */}
-        <div style={{ padding: '18px 22px', borderRadius: 14, marginBottom: 20,
-          background: `linear-gradient(135deg, ${statusCfg.color}12, ${statusCfg.color}06)`,
-          border: `1px solid ${statusCfg.color}30`,
-          display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
-          <div style={{ width: 52, height: 52, borderRadius: 12, background: `${statusCfg.color}20`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', color: statusCfg.color, flexShrink: 0 }}>
-            {statusCfg.icon && <div style={{ transform: 'scale(2)' }}>{statusCfg.icon}</div>}
-          </div>
-          <div style={{ flex: 1, minWidth: 200 }}>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4,
-              fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.6px' }}>
-              Current Status
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 20, fontWeight: 900, color: statusCfg.color, fontFamily: 'var(--font-display)' }}>
-                {statusCfg.label}
-              </span>
-              <StatusBadge status={data.status} />
-            </div>
-            {data.approval_comment && (
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 6, lineHeight: 1.5 }}>
-                <strong style={{ color: statusCfg.color }}>Reviewer Note: </strong>{data.approval_comment}
+        {/* ── 1. PROJECT HEADER HERO CARD ── */}
+        <div className="card" style={{ padding: 22, background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.95))', border: '1px solid rgba(59, 130, 246, 0.35)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 14 }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 11.5, fontWeight: 800, padding: '3px 10px', borderRadius: 4, background: 'rgba(255,255,255,0.06)', color: 'var(--accent-blue)', fontFamily: 'monospace' }}>
+                  DPR ID: {detail.ref_number}
+                </span>
+                <span style={{ fontSize: 11.5, fontWeight: 700, padding: '3px 10px', borderRadius: 4, ...statusStyle }}>
+                  {statusStyle.icon} Current Status: {detail.granular_status}
+                </span>
+                <span style={{ fontSize: 11.5, fontWeight: 800, padding: '3px 10px', borderRadius: 4, background: 'rgba(6,182,212,0.15)', color: 'var(--accent-cyan)' }}>
+                  Progress: {detail.progress_pct}%
+                </span>
               </div>
-            )}
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>Progress</div>
-            <div style={{ fontSize: 28, fontWeight: 900, color: statusCfg.color, fontFamily: 'var(--font-display)' }}>
-              {data.progress_pct}%
+
+              <div style={{ fontSize: 20, fontWeight: 900, color: '#fff', marginTop: 8, lineHeight: 1.3 }}>
+                {detail.title}
+              </div>
+
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12, color: 'var(--text-secondary)', marginTop: 6 }}>
+                <span>📍 Location: <strong style={{ color: '#fff' }}>{detail.district}, {detail.state || 'Karnataka'}</strong></span>
+                <span>🏭 Sector: <strong style={{ color: '#fff' }}>{detail.sector}</strong></span>
+                <span>💰 Outlay: <strong style={{ color: 'var(--accent-green)' }}>₹{detail.estimated_cost?.toFixed(2)} Cr</strong></span>
+                <span>👤 Submitter: <strong style={{ color: '#fff' }}>{detail.submitted_by}</strong></span>
+                <span>📅 Submitted: <strong>{detail.upload_date?.slice(0, 10)}</strong></span>
+                <span>🎯 Target SLA: <strong style={{ color: 'var(--accent-cyan)' }}>{detail.expected_completion_date}</strong></span>
+              </div>
             </div>
-            <div style={{ width: 80, height: 5, borderRadius: 3, background: 'rgba(255,255,255,0.1)', overflow: 'hidden', marginLeft: 'auto' }}>
-              <div style={{ height: '100%', width: `${data.progress_pct}%`, background: statusCfg.color, borderRadius: 3 }} />
+
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 26, fontWeight: 900, color: 'var(--accent-cyan)' }}>
+                {detail.progress_pct}%
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Workflow Progress</div>
+              <div style={{ fontSize: 11.5, color: '#fff', marginTop: 4 }}>
+                Current Reviewer: <strong>{detail.current_approver}</strong>
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--accent-blue)' }}>
+                {detail.current_department}
+              </div>
             </div>
           </div>
         </div>
 
-        {/* ── Progress Timeline ── */}
-        <div className="card" style={{ marginBottom: 20, padding: '18px 22px' }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)',
-            fontFamily: 'var(--font-display)', marginBottom: 20 }}>🗂️ Application Progress</div>
-          <ProgressTimeline steps={data.steps} currentIdx={data.step_index} status={data.status} />
-        </div>
-
-        {/* ── Info Grid ── */}
-        <div className="card" style={{ marginBottom: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '14px 18px', borderBottom: infoExpanded ? '1px solid var(--border)' : 'none',
-            cursor: 'pointer' }}
-            onClick={() => setInfoExpanded(e => !e)}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--font-display)' }}>
-              📋 DPR Information
-            </div>
-            {infoExpanded ? <ChevronUp size={15} color="var(--text-muted)" /> : <ChevronDown size={15} color="var(--text-muted)" />}
+        {/* ── 2. 9-STAGE VISUAL WORKFLOW PROGRESS TIMELINE ── */}
+        <div className="card" style={{ padding: 20, background: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(59, 130, 246, 0.25)' }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 14 }}>
+            9-Stage Government Workflow Progression:
           </div>
-          {infoExpanded && (
-            <div style={{ padding: '16px 18px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 18 }}>
-                {[
-                  { label: 'DPR Name', value: data.title },
-                  { label: 'Reference No.', value: data.ref_number, mono: true },
-                  { label: 'Original File', value: data.original_filename },
-                  { label: 'District', value: data.district },
-                  { label: 'Department', value: data.department },
-                  { label: 'Sector', value: data.sector },
-                  { label: 'Submitted By', value: data.submitted_by },
-                  { label: 'Submission Date', value: fmtDateTime(data.upload_date) },
-                  { label: 'Estimated Cost', value: `₹${data.estimated_cost} Cr.` },
-                  { label: 'Duration', value: `${data.duration_months} months` },
-                  { label: 'Assigned Reviewer', value: data.reviewer_name || 'Not assigned yet' },
-                  { label: 'Last Reviewed', value: fmtDateTime(data.reviewed_at) },
-                ].map(({ label, value, mono }) => (
-                  <div key={label}>
-                    <div style={{ fontSize: 9.5, color: 'var(--text-muted)', fontWeight: 700,
-                      textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 3 }}>{label}</div>
-                    <div style={{ fontSize: 12.5, color: 'var(--text-primary)', fontWeight: 600,
-                      fontFamily: mono ? 'monospace' : undefined }}>{value}</div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 8 }}>
+            {(detail.nine_stages || []).map((stg, sIdx) => {
+              const isDone = sIdx < detail.step_index || detail.progress_pct === 100;
+              const isCurrent = sIdx === detail.step_index && detail.progress_pct < 100;
+              return (
+                <div
+                  key={stg.key}
+                  style={{
+                    padding: '10px 8px', borderRadius: 6, textAlign: 'center',
+                    background: isDone ? 'rgba(34,197,94,0.1)' : isCurrent ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.02)',
+                    border: isDone ? '1px solid rgba(34,197,94,0.3)' : isCurrent ? '1px solid var(--accent-blue)' : '1px solid rgba(255,255,255,0.06)',
+                    display: 'flex', flexDirection: 'column', gap: 4
+                  }}
+                >
+                  <div style={{ fontSize: 13 }}>
+                    {isDone ? '✅' : isCurrent ? '⏳' : '○'}
                   </div>
-                ))}
-              </div>
-
-              {/* Score row */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginTop: 18 }}>
-                {[
-                  { label: 'AI Quality Score', value: data.overall_score, unit: '/100', color: '#3b82f6' },
-                  { label: 'Risk Score', value: data.risk_score, unit: '/100',
-                    color: data.risk_score !== null ? (data.risk_score > 70 ? '#ef4444' : data.risk_score > 40 ? '#f59e0b' : '#22c55e') : 'var(--text-muted)' },
-                  { label: 'Compliance Score', value: data.compliance_score, unit: '%', color: '#22c55e' },
-                ].map(({ label, value, unit, color }) => (
-                  <div key={label} style={{ padding: '12px 16px', borderRadius: 9,
-                    background: value !== null ? `${color}10` : 'var(--bg-secondary)',
-                    border: `1px solid ${value !== null ? `${color}25` : 'var(--border)'}` }}>
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700,
-                      textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 6 }}>{label}</div>
-                    {value !== null ? (
-                      <div style={{ fontSize: 22, fontWeight: 900, color, fontFamily: 'var(--font-display)' }}>
-                        {value}<span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-muted)' }}>{unit}</span>
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: 14, color: 'var(--text-muted)', fontStyle: 'italic' }}>Pending analysis</div>
-                    )}
+                  <div style={{ fontSize: 10, fontWeight: 800, color: isDone ? 'var(--accent-green)' : isCurrent ? '#fff' : 'var(--text-muted)' }}>
+                    STEP {sIdx + 1}
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
+                  <div style={{ fontSize: 11, fontWeight: 700, color: isDone ? '#fff' : isCurrent ? 'var(--accent-cyan)' : 'var(--text-secondary)', lineHeight: 1.2 }}>
+                    {stg.label}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
-        {/* ── Tabs ── */}
-        <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 18, gap: 2, flexWrap: 'wrap' }}>
-          {([
-            { key: 'timeline', icon: <History size={12}/>, label: 'Timeline History' },
-            { key: 'chat', icon: <MessageSquare size={12}/>, label: `Conversation (${data.comments.length})` },
-            { key: 'versions', icon: <GitBranch size={12}/>, label: `DPR Versions (${data.versions.length})` },
-            { key: 'notifications', icon: <Bell size={12}/>,
-              label: `Notifications${unreadCount > 0 ? ` (${unreadCount} new)` : ''}` },
-          ] as { key: string; icon: React.ReactNode; label: string }[]).map(tab => (
-            <button key={tab.key} onClick={() => setActiveTab(tab.key as typeof activeTab)}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px',
-                fontSize: 12.5, fontWeight: 600, cursor: 'pointer', background: 'none', border: 'none',
-                borderBottom: `2px solid ${activeTab === tab.key ? 'var(--accent-blue)' : 'transparent'}`,
-                color: activeTab === tab.key ? 'var(--accent-blue-light)' : 'var(--text-muted)',
-                marginBottom: -1, transition: 'all 0.15s' }}>
-              {tab.icon} {tab.label}
-              {tab.key === 'notifications' && unreadCount > 0 && (
-                <span style={{ width: 16, height: 16, borderRadius: '50%', background: '#ef4444',
-                  color: 'white', fontSize: 9, fontWeight: 900,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{unreadCount}</span>
-              )}
-            </button>
-          ))}
-        </div>
-
-        {/* ── Timeline tab ── */}
-        {activeTab === 'timeline' && (
-          <div className="card" style={{ padding: '20px 22px' }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)',
-              fontFamily: 'var(--font-display)', marginBottom: 20 }}>Complete Timeline History</div>
-            {data.timeline.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)', fontSize: 13 }}>
-                No events yet.
-              </div>
-            ) : (
-              data.timeline.map((event, i) => (
-                <TimelineItem key={event.id} event={event} isLast={i === data.timeline.length - 1} />
-              ))
-            )}
+        {/* ── 3. DEPARTMENT-WISE REVIEW MATRIX TABLE ── */}
+        <div className="card" style={{ padding: 20, background: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(59, 130, 246, 0.25)' }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 14 }}>
+            <Building2 size={16} color="var(--accent-blue)" />
+            Department-Wise Approval Status &amp; SLA Tracking:
           </div>
-        )}
 
-        {/* ── Chat tab ── */}
-        {activeTab === 'chat' && (
-          <div className="card" style={{ overflow: 'hidden' }}>
-            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--font-display)' }}>
-                Reviewer Conversation
-              </div>
-              {data.reviewer_name && (
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                  🧑‍💼 Reviewer: <strong style={{ color: 'var(--text-secondary)' }}>{data.reviewer_name}</strong>
-                  {' · '}{data.department}
-                </div>
-              )}
-            </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-muted)', textAlign: 'left' }}>
+                  <th style={{ padding: '8px 10px' }}>Department</th>
+                  <th style={{ padding: '8px 10px' }}>Assigned Officer</th>
+                  <th style={{ padding: '8px 10px' }}>Review Status</th>
+                  <th style={{ padding: '8px 10px' }}>Approval Date</th>
+                  <th style={{ padding: '8px 10px' }}>Comments / Remarks</th>
+                  <th style={{ padding: '8px 10px' }}>SLA Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(detail.department_tracking || []).map((dt, idx) => {
+                  const sla = getSlaBadge(dt.sla_status);
+                  const isAppr = dt.review_status === 'APPROVED';
+                  const isRev = dt.review_status === 'IN_REVIEW';
+                  const isReq = dt.review_status === 'CHANGES_REQUESTED';
+                  const isRej = dt.review_status === 'REJECTED';
 
-            {/* Chat window */}
-            <div style={{ padding: '16px 18px', minHeight: 200, maxHeight: 400, overflowY: 'auto' }}>
-              {data.comments.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)', fontSize: 13 }}>
-                  No messages yet. The reviewer will comment here when they review your DPR.
-                </div>
-              ) : (
-                data.comments.map(c => <ChatBubble key={c.id} comment={c} />)
-              )}
-              <div ref={chatEndRef} />
-            </div>
+                  let badgeColor = 'var(--text-muted)';
+                  let badgeBg = 'rgba(255,255,255,0.03)';
+                  let icon = '○';
+                  let statusLabel = 'Pending';
 
-            {/* Reply input */}
-            <div style={{ padding: '12px 18px', borderTop: '1px solid var(--border)',
-              background: 'rgba(0,0,0,0.1)' }}>
-              <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8 }}>
-                Your Reply
-              </div>
-              <textarea
-                value={replyMsg}
-                onChange={e => setReplyMsg(e.target.value)}
-                placeholder="Type your reply to the reviewer…"
-                rows={3}
-                style={{ width: '100%', padding: '10px 12px', background: 'var(--bg-secondary)',
-                  border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)',
-                  fontSize: 12.5, resize: 'vertical', outline: 'none', fontFamily: 'var(--font-body)',
-                  lineHeight: 1.5, boxSizing: 'border-box' }}
-              />
+                  if (isAppr) {
+                    badgeColor = 'var(--accent-green)';
+                    badgeBg = 'rgba(34,197,94,0.15)';
+                    icon = '✓';
+                    statusLabel = 'Approved';
+                  } else if (isRev) {
+                    badgeColor = 'var(--accent-blue)';
+                    badgeBg = 'rgba(59,130,246,0.15)';
+                    icon = '⏳';
+                    statusLabel = 'Under Review';
+                  } else if (isReq) {
+                    badgeColor = 'var(--accent-amber)';
+                    badgeBg = 'rgba(245,158,11,0.15)';
+                    icon = '⚠️';
+                    statusLabel = 'Revision Required';
+                  } else if (isRej) {
+                    badgeColor = '#ef4444';
+                    badgeBg = 'rgba(239,68,68,0.15)';
+                    icon = '❌';
+                    statusLabel = 'Rejected';
+                  }
 
-              <div style={{ display: 'flex', gap: 10, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                {/* File attachment */}
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px',
-                  borderRadius: 7, border: '1px dashed var(--border)', cursor: 'pointer',
-                  fontSize: 11.5, color: 'var(--text-secondary)', background: 'var(--bg-secondary)' }}>
-                  <Upload size={12} />
-                  {replyFile ? replyFile.name.slice(0, 20) + '…' : 'Attach document'}
-                  <input type="file" style={{ display: 'none' }}
-                    onChange={e => setReplyFile(e.target.files?.[0] || null)} />
-                </label>
-
-                <button onClick={sendReply} disabled={sendingReply || !replyMsg.trim()}
-                  style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6,
-                    padding: '8px 18px', borderRadius: 8,
-                    background: replyMsg.trim() ? 'var(--accent-blue)' : 'var(--bg-secondary)',
-                    color: replyMsg.trim() ? 'white' : 'var(--text-muted)',
-                    border: 'none', fontSize: 12.5, fontWeight: 700, cursor: replyMsg.trim() ? 'pointer' : 'default',
-                    transition: 'all 0.15s' }}>
-                  {sendingReply
-                    ? <><RefreshCw size={13} style={{ animation: 'spin 1s linear infinite' }} /> Sending…</>
-                    : <><Send size={13} /> Send Reply</>}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── Versions tab ── */}
-        {activeTab === 'versions' && (
-          <div className="card" style={{ overflow: 'hidden' }}>
-            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--font-display)' }}>
-                DPR Version History
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                {data.versions.length === 0 ? 'No revisions uploaded yet.' : `${data.versions.length} version(s)`}
-              </div>
-            </div>
-
-            {/* Version list */}
-            <div style={{ padding: '4px 0' }}>
-              {data.versions.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)', fontSize: 13 }}>
-                  No revised DPRs uploaded yet.
-                </div>
-              ) : (
-                data.versions.map((v, i) => (
-                  <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 12,
-                    padding: '12px 18px', borderBottom: i < data.versions.length - 1 ? '1px solid rgba(45,55,72,0.4)' : 'none' }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 9,
-                      background: i === data.versions.length - 1 ? 'rgba(34,197,94,0.1)' : 'var(--bg-secondary)',
-                      border: `1px solid ${i === data.versions.length - 1 ? 'rgba(34,197,94,0.2)' : 'var(--border)'}`,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 13, fontWeight: 900,
-                      color: i === data.versions.length - 1 ? '#22c55e' : 'var(--text-muted)' }}>
-                      v{v.version_number}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 2 }}>
-                        <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-primary)',
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {v.original_filename}
+                  return (
+                    <tr key={dt.department_key} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                      <td style={{ padding: '10px 10px', fontWeight: 700, color: '#fff' }}>
+                        {idx + 1}. {dt.department_name}
+                      </td>
+                      <td style={{ padding: '10px 10px', color: 'var(--text-secondary)' }}>
+                        <div style={{ fontWeight: 600, color: '#fff' }}>{dt.assigned_officer}</div>
+                        <div style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>{dt.role_title}</div>
+                      </td>
+                      <td style={{ padding: '10px 10px' }}>
+                        <span style={{
+                          padding: '3px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700,
+                          background: badgeBg, color: badgeColor,
+                          border: isAppr ? '1px solid rgba(34,197,94,0.3)' : '1px solid rgba(255,255,255,0.06)',
+                          display: 'inline-flex', alignItems: 'center', gap: 4
+                        }}>
+                          <span>{icon}</span> {statusLabel}
                         </span>
-                        {i === data.versions.length - 1 && (
-                          <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 4,
-                            background: 'rgba(34,197,94,0.1)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.2)' }}>
-                            LATEST
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                        Uploaded by {v.uploaded_by} · {fmtDateTime(v.upload_date)}
-                      </div>
-                      {v.notes && (
-                        <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2, fontStyle: 'italic' }}>
-                          {v.notes}
-                        </div>
-                      )}
+                      </td>
+                      <td style={{ padding: '10px 10px', color: 'var(--text-secondary)' }}>
+                        {dt.approval_date || 'Pending Review'}
+                      </td>
+                      <td style={{ padding: '10px 10px', color: 'var(--text-primary)', maxWidth: 280 }}>
+                        {dt.comments}
+                      </td>
+                      <td style={{ padding: '10px 10px' }}>
+                        <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 10.5, fontWeight: 700, background: sla.bg, color: sla.color }}>
+                          {sla.label}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+
+                {/* Final Approval Row */}
+                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: isFinalApproved ? 'rgba(34,197,94,0.05)' : 'transparent' }}>
+                  <td style={{ padding: '10px 10px', fontWeight: 800, color: '#fff' }}>
+                    6. Final Approval
+                  </td>
+                  <td style={{ padding: '10px 10px', color: 'var(--text-secondary)' }}>
+                    <div style={{ fontWeight: 600, color: '#fff' }}>Principal Secretary (PWD)</div>
+                    <div style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>Executive Authority</div>
+                  </td>
+                  <td style={{ padding: '10px 10px' }}>
+                    <span style={{
+                      padding: '3px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700,
+                      background: isFinalApproved ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.03)',
+                      color: isFinalApproved ? 'var(--accent-green)' : 'var(--text-muted)',
+                      border: isFinalApproved ? '1px solid rgba(34,197,94,0.3)' : '1px solid rgba(255,255,255,0.06)',
+                      display: 'inline-flex', alignItems: 'center', gap: 4
+                    }}>
+                      <span>{isFinalApproved ? '✓' : '○'}</span> {isFinalApproved ? 'Approved' : 'Pending'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '10px 10px', color: 'var(--text-secondary)' }}>
+                    {isFinalApproved ? 'Sanctioned' : 'Awaiting 5-Department Sign-off'}
+                  </td>
+                  <td style={{ padding: '10px 10px', color: 'var(--text-primary)' }}>
+                    {isFinalApproved ? 'Administrative Approval & Technical Sanction granted.' : 'Pending prerequisite directorate reviews.'}
+                  </td>
+                  <td style={{ padding: '10px 10px' }}>
+                    <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 10.5, fontWeight: 700, background: isFinalApproved ? 'rgba(34,197,94,0.15)' : 'rgba(59,130,246,0.15)', color: isFinalApproved ? 'var(--accent-green)' : 'var(--accent-blue)' }}>
+                      {isFinalApproved ? 'Completed' : 'On Track'}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* ── 4. OFFICIAL WORKFLOW TIMELINE & AUDIT HISTORY ── */}
+        <div className="card" style={{ padding: 20, background: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(59, 130, 246, 0.25)', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <History size={16} color="var(--accent-blue)" />
+            Workflow Timeline &amp; Approval History:
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {detail.timeline && detail.timeline.length > 0 ? (
+              detail.timeline.map((evt, eIdx) => (
+                <div key={evt.id || eIdx} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent-blue)', marginTop: 5, flexShrink: 0 }} />
+                  <div style={{ flex: 1, background: 'rgba(255,255,255,0.02)', padding: '8px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.04)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)' }}>
+                      <strong style={{ color: '#fff' }}>{evt.title}</strong>
+                      <span>{evt.created_at?.slice(0, 16)}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>
+                      {evt.description}
+                    </div>
+                    <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 2 }}>
+                      Actor: {evt.actor_name} ({evt.actor_role})
                     </div>
                   </div>
-                ))
-              )}
-            </div>
-
-            {/* Upload revision form */}
-            <div style={{ padding: '16px 18px', borderTop: '1px solid var(--border)',
-              background: 'rgba(0,0,0,0.08)' }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 12 }}>
-                📤 Upload Revised DPR (Version {nextVersion})
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px',
-                  borderRadius: 9, border: `2px dashed ${revisionFile ? '#22c55e' : 'var(--border)'}`,
-                  background: revisionFile ? 'rgba(34,197,94,0.05)' : 'var(--bg-secondary)', cursor: 'pointer' }}>
-                  <Upload size={16} color={revisionFile ? '#22c55e' : 'var(--text-muted)'} />
-                  <span style={{ fontSize: 12, color: revisionFile ? '#22c55e' : 'var(--text-muted)', fontWeight: 600 }}>
-                    {revisionFile ? revisionFile.name : 'Select revised DPR (PDF/DOC)'}
-                  </span>
-                  <input type="file" accept=".pdf,.doc,.docx" style={{ display: 'none' }}
-                    onChange={e => setRevisionFile(e.target.files?.[0] || null)} />
-                </label>
-                <input placeholder="Version notes (optional)…" value={revisionNotes}
-                  onChange={e => setRevisionNotes(e.target.value)}
-                  style={{ padding: '9px 12px', background: 'var(--bg-secondary)',
-                    border: '1px solid var(--border)', borderRadius: 7, color: 'var(--text-primary)',
-                    fontSize: 12, outline: 'none', fontFamily: 'var(--font-body)' }} />
-                <button onClick={uploadRevision} disabled={uploadingRevision || !revisionFile}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-                    padding: '10px 18px', borderRadius: 8,
-                    background: revisionFile ? 'var(--accent-blue)' : 'var(--bg-secondary)',
-                    color: revisionFile ? 'white' : 'var(--text-muted)',
-                    border: 'none', fontSize: 13, fontWeight: 700, cursor: revisionFile ? 'pointer' : 'default',
-                    transition: 'all 0.15s' }}>
-                  {uploadingRevision
-                    ? <><RefreshCw size={13} style={{ animation: 'spin 1s linear infinite' }} /> Uploading…</>
-                    : <><Upload size={14} /> Submit Revised DPR v{nextVersion}</>}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── Notifications tab ── */}
-        {activeTab === 'notifications' && (
-          <div className="card" style={{ overflow: 'hidden' }}>
-            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--font-display)' }}>
-                Notifications
-              </div>
-              {unreadCount > 0 && (
-                <button onClick={markRead}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px',
-                    borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-secondary)',
-                    color: 'var(--text-secondary)', fontSize: 11.5, cursor: 'pointer', fontWeight: 600 }}>
-                  <BellOff size={12} /> Mark all read
-                </button>
-              )}
-            </div>
-            <div style={{ padding: '4px 18px' }}>
-              {data.notifications.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)', fontSize: 13 }}>
-                  No notifications yet.
                 </div>
-              ) : (
-                data.notifications.map(n => <NotifItem key={n.id} n={n} />)
-              )}
-            </div>
+              ))
+            ) : (
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                Workflow initialized upon DPR submission.
+              </div>
+            )}
           </div>
-        )}
+        </div>
+
+        {/* ── 5. COMMENTS & REMARKS LOG ── */}
+        <div className="card" style={{ padding: 20, background: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(59, 130, 246, 0.25)', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <MessageSquare size={16} color="var(--accent-blue)" />
+            Department Reviewer Comments &amp; Remarks:
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 240, overflowY: 'auto' }}>
+            {detail.comments && detail.comments.length > 0 ? (
+              detail.comments.map(c => (
+                <div key={c.id} style={{ background: 'rgba(255,255,255,0.02)', padding: '10px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)' }}>
+                    <strong>{c.author_name} ({c.author_role})</strong>
+                    <span>{c.created_at?.slice(0, 16)}</span>
+                  </div>
+                  <div style={{ fontSize: 12.5, color: 'var(--text-primary)', marginTop: 4 }}>
+                    {c.message}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', padding: 8 }}>
+                No reviewer remarks recorded yet. Post a comment or status inquiry below.
+              </div>
+            )}
+          </div>
+
+          <form onSubmit={handlePostComment} style={{ display: 'flex', gap: 8 }}>
+            <input
+              type="text"
+              placeholder="Add official comment or remark on this DPR application..."
+              value={newComment}
+              onChange={e => setNewComment(e.target.value)}
+              className="select-field"
+              style={{ flex: 1, fontSize: 12.5, padding: '8px 12px' }}
+            />
+            <button
+              type="submit"
+              disabled={submittingComment || !newComment.trim()}
+              className="btn btn-primary"
+              style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}
+            >
+              <Send size={13} /> Send Remark
+            </button>
+          </form>
+        </div>
+
       </div>
     </>
   );
