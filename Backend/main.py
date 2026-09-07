@@ -15,13 +15,36 @@ from datetime import datetime
 
 app = FastAPI(title="Karnataka PWD DPR-AI API", version="1.0.0")
 
+# ---- Dynamic CORS Middleware for Vercel, Render & Localhost ----
+allowed_origins_env = os.environ.get("CORS_ORIGINS", "")
+allowed_origins = [orig.strip() for orig in allowed_origins_env.split(",") if orig.strip()]
+if not allowed_origins:
+    allowed_origins = [
+        "http://localhost:3000",
+        "http://localhost:8000",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:8000",
+    ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.get("/health")
+@app.get("/api/health")
+def health_check():
+    """Health check endpoint for Render / load balancer monitoring."""
+    return {
+        "status": "healthy",
+        "service": "Karnataka PWD DPR-AI Backend",
+        "version": "1.0.0",
+        "timestamp": datetime.now().isoformat()
+    }
 
 # ---- Auth Router ----
 from app.routers.auth import router as auth_router
@@ -3451,6 +3474,13 @@ def get_dpr_approval_certificate(dpr_id: str, request: Request, username: Option
         "certificate": cert,
         "stages": wf.get("stages", [])
     }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
+
 
 
 

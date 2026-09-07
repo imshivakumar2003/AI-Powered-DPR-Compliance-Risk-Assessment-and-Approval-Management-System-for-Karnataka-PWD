@@ -8,9 +8,18 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 
-DB_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "Database")
-DB_PATH = os.path.join(DB_DIR, "projects.db")
-UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "uploads")
+# Resolve DB and Upload directories with environment variable support & fallback
+_root_db_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "Database"))
+_backend_db_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data"))
+DB_DIR = os.environ.get("DB_DIR") or (_root_db_dir if os.path.exists(os.path.join(_root_db_dir, "projects.db")) or os.path.exists(_root_db_dir) else _backend_db_dir)
+DB_PATH = os.environ.get("DB_PATH") or os.path.join(DB_DIR, "projects.db")
+
+_root_upload_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "uploads"))
+_backend_upload_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "uploads"))
+UPLOAD_DIR = os.environ.get("UPLOAD_DIR") or (_root_upload_dir if os.path.exists(_root_upload_dir) else _backend_upload_dir)
+
+os.makedirs(DB_DIR, exist_ok=True)
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 class Project(BaseModel):
     id: str

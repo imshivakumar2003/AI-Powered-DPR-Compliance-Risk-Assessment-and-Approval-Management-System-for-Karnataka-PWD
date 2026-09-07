@@ -1,11 +1,11 @@
-﻿// TOPLINE
+// TOPLINE
 
 'use client';
 import { Topbar } from '@/components/layout/Topbar';
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, Search, Edit2, Trash2, Shield, User, Key, X, Check } from 'lucide-react';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
 interface ApiUser {
   id: number;

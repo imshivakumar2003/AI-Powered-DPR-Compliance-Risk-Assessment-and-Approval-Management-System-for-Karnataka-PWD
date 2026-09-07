@@ -1,8 +1,6 @@
 // TOPLINE
 
-// Centralized API client for the Karnataka PWD DPR-AI Backend
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
 export function getUserHeaders(): Record<string, string> {
   const headers: Record<string, string> = {};

@@ -6,9 +6,9 @@ from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel
 
-DB_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data")
-DB_PATH = os.path.join(DB_DIR, "dpr.db")
-TEMPLATE_STORAGE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "uploads", "templates")
+DB_DIR = os.environ.get("DB_DIR") or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data"))
+DB_PATH = os.environ.get("TEMPLATE_DB_PATH") or os.path.join(DB_DIR, "dpr.db")
+TEMPLATE_STORAGE_DIR = os.environ.get("TEMPLATE_STORAGE_DIR") or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "uploads", "templates"))
 
 os.makedirs(DB_DIR, exist_ok=True)
 os.makedirs(TEMPLATE_STORAGE_DIR, exist_ok=True)

@@ -410,7 +410,7 @@ export default function SettingsPage() {
           <div className="card-body">
             {[
               { key: 'Version', val: 'DPR-AI v1.0.0 (Karnataka PWD 2026)' },
-              { key: 'API Endpoint', val: 'http://localhost:8000' },
+              { key: 'API Endpoint', val: process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000' },
               { key: 'ML Model', val: 'XGBoost v1.7.3 (Simulated)' },
               { key: 'Database', val: 'SQLite (auth.db)' },
               { key: 'NLP Engine', val: 'spaCy 3.7 + PyMuPDF' },

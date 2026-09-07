@@ -23,7 +23,7 @@ const DISTRICTS = [
 
 const SECTORS = ['Roads', 'Bridges', 'Infrastructure', 'Buildings', 'Power', 'Healthcare', 'Education', 'Tourism', 'Irrigation', 'Urban', 'Water Supply'];
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
 export default function UploadPage() {
   const router = useRouter();

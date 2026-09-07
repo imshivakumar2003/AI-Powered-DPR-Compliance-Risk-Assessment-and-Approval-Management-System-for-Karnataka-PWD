@@ -9,13 +9,17 @@ import bcrypt
 from pydantic import BaseModel
 
 # ---- Configuration ----
-SECRET_KEY = "Karnataka PWD-dpr-ai-secret-key-2026-change-in-production"
+SECRET_KEY = os.environ.get("SECRET_KEY", "Karnataka PWD-dpr-ai-secret-key-2026-change-in-production")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 480  # 8 hours
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "480"))  # 8 hours
 
-# SQLite database path — stored in the Database folder at project root
-DB_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "Database")
-DB_PATH = os.path.join(DB_DIR, "auth.db")
+# SQLite database path — stored in the Database folder at project root, with fallback to data dir
+_root_db_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "Database"))
+_backend_db_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data"))
+DB_DIR = os.environ.get("DB_DIR") or (_root_db_dir if os.path.exists(os.path.join(_root_db_dir, "auth.db")) or os.path.exists(_root_db_dir) else _backend_db_dir)
+DB_PATH = os.environ.get("AUTH_DB_PATH") or os.path.join(DB_DIR, "auth.db")
+
+os.makedirs(DB_DIR, exist_ok=True)
 
 # ---- Password Hashing (using bcrypt directly to avoid passlib compat issues) ----
 

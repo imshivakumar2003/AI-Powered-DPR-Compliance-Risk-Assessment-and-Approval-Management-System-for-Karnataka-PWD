@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { AiScoreBadge, DprScoreStrip } from '@/components/common/AiScoreBadges';
 
-const API = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+const API = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
 interface DepartmentTrackItem {
   department_key: string;
