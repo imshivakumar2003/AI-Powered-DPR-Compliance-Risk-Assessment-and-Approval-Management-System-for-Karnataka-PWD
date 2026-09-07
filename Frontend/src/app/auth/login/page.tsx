@@ -345,46 +345,6 @@ export default function LoginPage() {
                 Sign up for free
               </Link>
             </p>
-
-            {/* Demo accounts */}
-            <div style={{
-              marginTop: 28, padding: "16px", borderRadius: 14,
-              background: isDark ? "rgba(99,102,241,0.06)" : "rgba(99,102,241,0.04)",
-              border: `1px dashed ${isDark ? "rgba(99,102,241,0.25)" : "rgba(99,102,241,0.2)"}`,
-            }}>
-              <div style={{ fontSize: 11, fontWeight: 800, color: isDark ? "#6366f1" : "#4f46e5", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Demo Accounts</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {[
-                  { id: "admin", pwd: "admin", role: "Admin", color: "#ef4444" },
-                  { id: "user", pwd: "user", role: "Requester", color: "#6366f1" },
-                  { id: "test", pwd: "1234", role: "Viewer", color: "#10b981" },
-                ].map(acc => (
-                  <button
-                    key={acc.id}
-                    type="button"
-                    onClick={() => { setLoginId(acc.id); setPassword(acc.pwd); }}
-                    style={{
-                      display: "flex", alignItems: "center", justifyContent: "space-between",
-                      padding: "8px 12px", borderRadius: 10, border: "none", cursor: "pointer",
-                      background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
-                      transition: "all 0.15s",
-                    }}
-                    onMouseEnter={e => (e.currentTarget.style.background = isDark ? "rgba(99,102,241,0.1)" : "rgba(99,102,241,0.06)")}
-                    onMouseLeave={e => (e.currentTarget.style.background = isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)")}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <div style={{ width: 7, height: 7, borderRadius: "50%", background: acc.color }} />
-                      <span style={{ fontSize: 12, fontWeight: 700, color: isDark ? "#cbd5e1" : "#374151", fontFamily: "monospace" }}>
-                        {acc.id} / {acc.pwd}
-                      </span>
-                    </div>
-                    <span style={{ fontSize: 10, fontWeight: 800, color: acc.color, textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                      {acc.role}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
           </div>
         </div>
       </motion.div>
